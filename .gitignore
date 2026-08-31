@@ -1,0 +1,21 @@
+# Gradle
+.gradle/
+build/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# macOS
+.DS_Store
+
+# Local configuration and secrets
+application-local.yml
+src/main/resources/application-local.yml
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log

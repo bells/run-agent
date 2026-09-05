@@ -2,8 +2,9 @@
 
 Personal Running AI Agent built with Java and Spring AI.
 
-RunAgent 是一个个人 AI Agent 学习与实战项目，未来会为
-[Running Web](https://run.watsonzhu.cn) 提供自然语言分析能力。当前版本是 **v0.1**，只保留最短学习链路：
+RunAgent 是一个个人 AI Agent 学习与实战项目，未来会为前端项目
+[Watson Running](https://github.com/bells/watson-running)（[线上站点](https://run.watsonzhu.cn)）
+提供自然语言分析能力。当前版本是 **v0.1**，只保留最短学习链路：
 
 ```text
 User → Spring Boot → ChatClient → LLM → Response
@@ -18,6 +19,10 @@ Natural Language → LLM → Structured Output → Java Object
 
 当前没有接入真实跑步数据。系统提示词会明确禁止模型捏造用户的跑步历史。
 
+RunAgent 与 Watson Running 保持独立仓库和部署单元，详细边界见
+[Watson Running Integration Boundary](docs/watson-running-integration.md)。面向代码 Agent 的仓库约定见
+[AGENTS.md](AGENTS.md)。
+
 ## 技术栈
 
 - Java 21
@@ -28,14 +33,14 @@ Natural Language → LLM → Structured Output → Java Object
 - Bean Validation
 - JUnit 5
 
-项目使用 Spring AI 2.0.1 BOM 管理 AI 组件版本。OpenAI Starter 负责创建 `ChatClient.Builder`，
+项目使用 Spring AI 2.0.1 BOM 管理 AI 组件版本。DeepSeek Starter 负责创建 `ChatClient.Builder`，
 业务层统一构建和调用 `ChatClient`。
 
 ## 环境要求
 
 - JDK 21
 - 可访问所配置 LLM 服务的网络
-- OpenAI API Key，或兼容 OpenAI API 的服务
+- DeepSeek API Key
 
 无需单独安装 Gradle。
 
@@ -44,15 +49,17 @@ Natural Language → LLM → Structured Output → Java Object
 推荐通过环境变量配置，不要把真实密钥写入仓库：
 
 ```bash
-export OPENAI_API_KEY="your-api-key"
-export OPENAI_MODEL="gpt-4.1-mini"
+export DEEPSEEK_API_KEY="your-api-key"
+export DEEPSEEK_MODEL="deepseek-v4-pro"
 ```
 
-使用 OpenAI-compatible provider 时还可以覆盖：
+如需使用代理或兼容网关，可以覆盖 DeepSeek Base URL：
 
 ```bash
-export OPENAI_BASE_URL="https://your-provider.example.com"
+export DEEPSEEK_BASE_URL="https://your-provider.example.com"
 ```
+
+默认使用 `deepseek-v4-pro`；如需更低延迟和成本，可设置为 `deepseek-v4-flash`。
 
 仓库提供了 `application-local.yml.example`。如需本地配置文件，可复制为
 `src/main/resources/application-local.yml`，该文件已加入 `.gitignore`，然后使用

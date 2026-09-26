@@ -9,6 +9,7 @@ public record RunningIntent(
         String originalQuestion
 ) {
     public RunningIntent {
+        // 缺失意图是模型可能给出的结果；归一化为 UNKNOWN，避免调用方处理 null。
         intent = intent == null ? RunningIntentType.UNKNOWN : intent;
     }
 

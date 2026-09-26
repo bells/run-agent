@@ -43,6 +43,7 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(AiRequestException.class)
     public ResponseEntity<ApiError> handleAiRequest(AiRequestException exception, ServerWebExchange exchange) {
+        // 对外只给稳定错误码和安全文案；底层模型异常可能包含供应商细节。
         log.warn("AI request failed: {}", exception.getMessage());
         return response(HttpStatus.BAD_GATEWAY, "AI_SERVICE_ERROR",
                 "The AI service is temporarily unavailable", exchange);

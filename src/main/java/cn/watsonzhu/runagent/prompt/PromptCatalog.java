@@ -33,7 +33,8 @@ public class PromptCatalog {
     }
 
     public String chatSystemPrompt() {
-        return chatSystemPrompt;
+        // 每次请求再填入今天的日期，使模型能把“今年”“最近 30 天”转换成具体的 Tool 参数。
+        return chatSystemPrompt.replace(CURRENT_DATE_TOKEN, LocalDate.now(clock).toString());
     }
 
     public String runningIntentSystemPrompt() {

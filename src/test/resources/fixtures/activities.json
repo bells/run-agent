@@ -1,0 +1,6 @@
+[
+  {"run_id":1,"type":"Run","distance":5000.5,"moving_time":"0:45:30","start_date_local":"2026-08-01 07:00:00","summary_polyline":"ignored-fixture"},
+  {"run_id":2,"type":"Run","distance":10000,"moving_time":"1:02:03","start_date_local":"2026-08-31 18:00:00"},
+  {"run_id":3,"type":"Ride","distance":20000,"moving_time":"2:00:00","start_date_local":"2026-08-15 12:00:00"},
+  {"run_id":4,"type":"Run","distance":3000,"moving_time":"12:30:00","start_date_local":"2026-09-01 06:00:00"}
+]

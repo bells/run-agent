@@ -22,13 +22,14 @@ Java 21 / Spring Boot / Spring AI
 
 ## 当前阶段
 
-当前版本是 v0.1，已经实现：
+当前版本是 v0.2，已经实现：
 
 - `POST /api/chat`：普通 Chat。
 - `GET /api/chat/stream`：UTF-8 SSE Streaming Chat。
 - `POST /api/intent`：`RunningIntent` Structured Output。
+- `getRunningSummary`：通过配置的本地 `activities.json` 只读统计真实跑步数据；普通与 Streaming Chat 可使用。
 
-v0.1 明确不实现 Tool Calling、Running Data Tool、Agent Loop、Memory、数据库、Embedding、RAG、MCP、Workflow、LangGraph、Multi-Agent、复杂认证或完整 Observability。后续能力必须按版本目标逐步加入，不要为了未来需求提前搭建复杂框架。
+v0.2 只提供一个 Running Tool，不实现自定义 Agent Loop、Memory、数据库、Embedding、RAG、MCP、Workflow、LangGraph、Multi-Agent、复杂认证或完整 Observability。后续能力必须按版本目标逐步加入。
 
 ## 已验证技术基线
 
@@ -70,7 +71,7 @@ Controller -> RunAgentService -> ChatClient -> LLM
 - 所有模型调用失败必须转换为明确的领域异常，不能向客户端返回完整堆栈或供应商响应细节。
 - Structured Output 优先使用 Spring AI Java 类型/Schema 映射，例如 `entity(RunningIntent.class)`；不能只依赖“请返回 JSON”的 Prompt。
 - 模型输出是不可信输入。映射后仍需验证日期范围、枚举、必填字段和业务约束。
-- 用户询问真实个人跑步数据时，在 Running Data Tool 落地前必须明确无数据访问能力，不得捏造历史、里程、配速或 PB。
+- 用户询问真实个人跑步统计时，必须依赖 Running Tool 的结果；数据不可用时明确说明，不得捏造历史、里程、配速或 PB。
 - 真实模型验证是可选 smoke test，单元测试和常规构建不得依赖外部 API、网络或付费调用。
 
 ## WebFlux 与 Streaming 约定
@@ -94,7 +95,7 @@ Controller -> RunAgentService -> ChatClient -> LLM
 - `watson-running` 负责 React/TypeScript UI、地图、图表、统计、历史展示及现有静态数据生成流程。
 - RunAgent 负责 AI 模型接入、服务端分析以及未来的 Tool、Memory、RAG、MCP、Evaluation 和服务端授权。
 - 不要把 Java/Spring AI、模型密钥、Memory 或 Agent 业务逻辑复制到前端仓库。
-- 不要默认让 RunAgent 直接共享或修改 `watson-running` 的 SQLite、GPX、TCX、FIT、`activities.json` 或 SVG 生成资产。未来 Running Data Tool 应通过经过评审的只读契约或受控导出获取最少必要数据。
+- v0.2 仅在显式配置 `RUNNING_DATA_PATH` 后只读访问生成后的 `activities.json`，不修改它。不要直接共享或修改 SQLite、GPX、TCX、FIT 或 SVG 资产；后续正式集成应评审只读契约或受控导出。
 - 跑步轨迹包含精确位置。原始轨迹、起终点、平台凭据和仓库 Secrets 默认不得发送给浏览器或 LLM。
 - 跨仓库任务先检查两个工作树，并分别报告修改和验证结果；不得顺手改动历史仓库 `running_page`。
 
@@ -125,7 +126,6 @@ Controller -> RunAgentService -> ChatClient -> LLM
 ## Roadmap 扩展顺序
 
 ```text
-v0.2 Tool Calling
 v0.3 Agent Loop
 v0.4 Memory
 v0.5 RAG

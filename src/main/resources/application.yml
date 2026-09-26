@@ -14,6 +14,11 @@ server:
     include-binding-errors: never
     include-stacktrace: never
 
+run-agent:
+  running-data:
+    # 不配置时保持空值；只有模型请求 Running Tool 时才尝试读取文件。
+    path: ${RUNNING_DATA_PATH:}
+
 logging:
   level:
     cn.watsonzhu.runagent: INFO

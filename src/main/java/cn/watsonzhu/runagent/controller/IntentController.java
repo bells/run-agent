@@ -28,6 +28,7 @@ public class IntentController {
     @PostMapping
     public Mono<RunningIntent> parseIntent(@Valid @RequestBody ChatRequest request) {
         log.info("Intent request received, messageLength={}", request.message().length());
+        // Structured Output 同样会同步等待模型响应，故移到适合阻塞任务的线程池。
         return Mono.fromCallable(() -> runAgentService.parseRunningIntent(request.message()))
                 .subscribeOn(Schedulers.boundedElastic());
     }

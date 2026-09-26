@@ -5,7 +5,7 @@ plugins {
 }
 
 group = 'cn.watsonzhu'
-version = '0.1.0-SNAPSHOT'
+version = '0.2.0-SNAPSHOT'
 
 java {
     toolchain {
@@ -23,6 +23,7 @@ ext {
 
 dependencyManagement {
     imports {
+        // 统一 Spring AI 模块版本，避免 DeepSeek Starter 与 ChatClient 使用不同的 API 版本。
         mavenBom "org.springframework.ai:spring-ai-bom:${springAiVersion}"
     }
 }

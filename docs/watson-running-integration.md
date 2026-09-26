@@ -9,22 +9,22 @@ watson-running                           run-agent
 React / TypeScript                      Java 21 / Spring Boot
 地图、图表、统计、历史展示       REST    Spring AI / ChatClient
 RunAgent 对话与分析界面        <----->   AI 分析与服务端安全边界
-浏览器流式交互                  SSE     未来 Tool / Memory / RAG / MCP
+浏览器流式交互                  SSE     Running Tool / 未来 Memory / RAG / MCP
 ```
 
 两个项目不是 monorepo，也不共享构建系统或运行时密钥。
 
 ## 当前状态
 
-RunAgent v0.1 已提供学习用途的未版本化 API：
+RunAgent v0.2 已提供学习用途的未版本化 API：
 
 | API | 协议 | 当前作用 |
 | --- | --- | --- |
-| `POST /api/chat` | JSON | 普通跑步问答 |
-| `GET /api/chat/stream` | UTF-8 SSE | 流式跑步问答，事件名为 `token` / `error` |
+| `POST /api/chat` | JSON | 普通跑步问答，可调用 Running Tool |
+| `GET /api/chat/stream` | UTF-8 SSE | 流式跑步问答，可调用 Running Tool；事件名为 `token` / `error` |
 | `POST /api/intent` | JSON | 把自然语言映射为 `RunningIntent` |
 
-Watson Running 当前还没有接入这些接口，RunAgent 也没有 Running Data Tool，不能访问真实个人跑步历史。
+RunAgent 的 Running Tool 只在服务端配置 `RUNNING_DATA_PATH` 后读取生成后的 `activities.json`，当前仍属本地学习阶段。正式前端接入和部署需要单独设计版本化契约。
 
 ## 职责划分
 
@@ -40,13 +40,13 @@ Watson Running 当前还没有接入这些接口，RunAgent 也没有 Running Da
 - Java 21 / Spring Boot 服务端运行时。
 - Spring AI 模型接入和 System Prompt。
 - 请求校验、服务端错误语义和敏感配置保护。
-- 后续阶段的 Tool Calling、Agent Loop、Memory、RAG、MCP 和 Evaluation。
+- 当前阶段的只读 Tool Calling，以及后续 Agent Loop、Memory、RAG、MCP 和 Evaluation。
 
 模型密钥、平台凭据、Memory 和 Agent 编排只能存在于 RunAgent 服务端，不能打包进前端。
 
 ## 正式接入前的契约要求
 
-当前 `/api/*` 接口可以继续用于 v0.1 学习和 smoke test。正式让 Watson Running 调用时，应先定义版本化 `/api/v1/*` 契约，并完成以下事项：
+当前 `/api/*` 接口可以继续用于 v0.2 学习和 smoke test。正式让 Watson Running 调用时，应先定义版本化 `/api/v1/*` 契约，并完成以下事项：
 
 1. Java record 与 TypeScript interface/union 一一对应。
 2. 给 SSE 定义稳定的 event name、typed data、request id 和明确的 complete/error/cancelled 终态。
@@ -62,9 +62,9 @@ Watson Running 当前还没有接入这些接口，RunAgent 也没有 Running Da
 
 Watson Running 的数据生成流程会产生 SQLite、GPX/TCX/FIT、`activities.json` 和 SVG 等相互关联的资产，其中轨迹可能暴露精确位置。
 
-未来 Running Data Tool 应遵循：
+当前及未来 Running Data Tool 应遵循：
 
-- 默认只读，并通过显式 API 或受控导出获取数据，不直接修改前端仓库数据库。
+- 默认只读；v0.2 使用显式配置的本地生成文件，正式集成再评审 API 或受控导出，不直接修改前端仓库数据库。
 - 只向模型发送完成问题所需的最少字段和最小时间范围。
 - 在进入 RunAgent 或 LLM 前复用/强化 Watson Running 的轨迹隐私过滤。
 - 默认不发送原始 GPX、精确起终点、平台凭据、仓库 Secret 或未脱敏备注。
@@ -77,4 +77,4 @@ Watson Running 的数据生成流程会产生 SQLite、GPX/TCX/FIT、`activities
 - 把 Python 数据同步管道迁移到 Java。
 - 让浏览器或模型直接读取 SQLite/原始轨迹。
 - 从 RunAgent 写入、删除或批量修复活动记录。
-- 在 v0.1 中提前实现 Tool、Memory、RAG、MCP 或复杂认证。
+- 在 v0.2 中提前实现更多 Tool、Memory、RAG、MCP 或复杂认证。

@@ -36,6 +36,7 @@ public class ChatController {
     @PostMapping
     public Mono<ChatResponse> chat(@Valid @RequestBody ChatRequest request) {
         log.info("Chat request received, messageLength={}", request.message().length());
+        // ChatClient.call() 是阻塞调用，不能占用 WebFlux 的 Netty event loop。
         return Mono.fromCallable(() -> new ChatResponse(runAgentService.chat(request.message())))
                 .subscribeOn(Schedulers.boundedElastic());
     }
@@ -52,6 +53,7 @@ public class ChatController {
                         .event("token")
                         .data(content)
                         .build())
+                // SSE 开始后无法再修改 HTTP 状态码，因此用固定 error 事件结束，不向浏览器暴露异常详情。
                 .onErrorResume(exception -> {
                     log.warn("Streaming response ended with an error: {}", exception.getMessage());
                     return Flux.just(ServerSentEvent.<String>builder()

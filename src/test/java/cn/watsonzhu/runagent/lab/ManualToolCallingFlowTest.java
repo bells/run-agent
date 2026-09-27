@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 import java.nio.file.Path;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import cn.watsonzhu.runagent.RunAgentApplication;
@@ -31,6 +32,7 @@ import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.model.tool.ToolCallingChatOptions;
 import org.springframework.ai.support.ToolCallbacks;
+import org.springframework.ai.tool.ToolCallback;
 import org.springframework.boot.SpringApplication;
 import tools.jackson.databind.ObjectMapper;
 
@@ -128,7 +130,9 @@ class ManualToolCallingFlowTest {
             throw new IllegalArgumentException("This model must support ToolCallingChatOptions");
         }
         // 这里只借用 @Tool 生成 Schema；不调用 Spring AI 的 ToolCallingAdvisor 或 ToolCallingManager 执行工具。
-        var callbacks = ToolCallbacks.from(tools);
+        ToolCallback[] callbacks = Arrays.stream(ToolCallbacks.from(tools))
+                .filter(callback -> TOOL_NAME.equals(callback.getToolDefinition().name()))
+                .toArray(ToolCallback[]::new);
         ToolCallingChatOptions options = modelOptions.mutate().toolCallbacks(callbacks).build();
         List<Message> messages = new ArrayList<>(List.of(new SystemMessage(systemPrompt), new UserMessage(question)));
         List<String> steps = new ArrayList<>();

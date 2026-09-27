@@ -49,6 +49,16 @@ public class ApiExceptionHandler {
                 "The AI service is temporarily unavailable", exchange);
     }
 
+    @ExceptionHandler(AgentTimeoutException.class)
+    public ResponseEntity<ApiError> handleAgentTimeout(AgentTimeoutException exception, ServerWebExchange exchange) {
+        return response(HttpStatus.GATEWAY_TIMEOUT, "AGENT_TIMEOUT", "The agent request timed out", exchange);
+    }
+
+    @ExceptionHandler(AgentLimitException.class)
+    public ResponseEntity<ApiError> handleAgentLimit(AgentLimitException exception, ServerWebExchange exchange) {
+        return response(HttpStatus.BAD_GATEWAY, "AGENT_TOOL_LIMIT", "The agent stopped after reaching its tool limit", exchange);
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiError> handleUnexpected(Exception exception, ServerWebExchange exchange) {
         log.error("Unexpected request failure", exception);

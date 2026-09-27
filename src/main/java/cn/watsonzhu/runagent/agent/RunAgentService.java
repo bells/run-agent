@@ -1,15 +1,21 @@
 package cn.watsonzhu.runagent.agent;
 
 import java.time.Duration;
+import java.util.Map;
+import java.util.UUID;
 
 import cn.watsonzhu.runagent.exception.AiRequestException;
+import cn.watsonzhu.runagent.exception.AgentLimitException;
 import cn.watsonzhu.runagent.exception.StructuredOutputException;
 import cn.watsonzhu.runagent.model.RunningIntent;
+import cn.watsonzhu.runagent.model.AgentResponse;
 import cn.watsonzhu.runagent.prompt.PromptCatalog;
 import cn.watsonzhu.runagent.tool.RunningTools;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.model.tool.ToolCallLimitExceededException;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
@@ -34,10 +40,12 @@ public class RunAgentService {
         log.info("AI chat request started");
         try {
             // .tools() 提供工具定义；模型只会请求调用，Spring AI 的 ToolCallingAdvisor 才会执行 Java 方法并再次请求模型。
+            // 普通 Chat 只需要最终文本；ToolContext 是 Java 工具方法所需的应用侧上下文，不会进入模型参数。
             String content = chatClient.prompt()
                     .system(prompts.chatSystemPrompt())
                     .user(message)
                     .tools(runningTools)
+                    .toolContext(Map.of("requestType", "chat"))
                     .call()
                     .content();
             log.info("AI final response completed in {} ms", elapsedMillis(startedAt));
@@ -45,6 +53,41 @@ public class RunAgentService {
         } catch (RuntimeException exception) {
             log.warn("AI chat request failed after {} ms", elapsedMillis(startedAt));
             throw new AiRequestException("Chat model invocation failed", exception);
+        }
+    }
+
+    public AgentResponse agent(String message) {
+        AgentExecutionTrace trace = new AgentExecutionTrace(UUID.randomUUID().toString());
+        long startedAt = System.nanoTime();
+        log.info("agentExecutionId={} phase=STARTED", trace.executionId());
+        try {
+            // Agent 需要完整响应的 finishReason，以识别框架转换后的 Tool 超限结果；content() 会丢掉该元数据。
+            ChatResponse response = chatClient.prompt()
+                    .system(prompts.agentSystemPrompt())
+                    .user(message)
+                    .tools(runningTools)
+                    // 同一请求的 Tool 调用共享 trace，计数与 executionId 不依赖线程局部或全局状态。
+                    .toolContext(Map.of(AgentExecutionTrace.CONTEXT_KEY, trace))
+                    .call()
+                    .chatResponse();
+            if (response != null && response.getResult() != null
+                    && ToolCallLimitExceededException.FINISH_REASON.equals(
+                            response.getResult().getMetadata().getFinishReason())) {
+                throw new AgentLimitException();
+            }
+            String content = response == null || response.getResult() == null
+                    ? "" : response.getResult().getOutput().getText();
+            log.info("agentExecutionId={} phase=COMPLETED toolCalls={} latencyMs={}",
+                    trace.executionId(), trace.toolCallCount(), elapsedMillis(startedAt));
+            return new AgentResponse(trace.executionId(), trace.toolCallCount(), content == null ? "" : content);
+        } catch (AgentLimitException exception) {
+            log.warn("agentExecutionId={} phase=LIMIT_EXCEEDED toolCalls={} latencyMs={}",
+                    trace.executionId(), trace.toolCallCount(), elapsedMillis(startedAt));
+            throw exception;
+        } catch (RuntimeException exception) {
+            log.warn("agentExecutionId={} phase=FAILED toolCalls={} latencyMs={}",
+                    trace.executionId(), trace.toolCallCount(), elapsedMillis(startedAt));
+            throw new AiRequestException("Agent model invocation failed", exception);
         }
     }
 
@@ -59,6 +102,7 @@ public class RunAgentService {
                         .user(message)
                         // Streaming 与普通 Chat 暴露同一个 Tool，结果仍由 Spring AI 交回模型生成最终文本。
                         .tools(runningTools)
+                        .toolContext(Map.of("requestType", "chat-stream"))
                         .stream()
                         .content()
                         .doOnComplete(() -> log.info("AI streaming final response completed in {} ms",

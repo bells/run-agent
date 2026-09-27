@@ -17,18 +17,29 @@ public class PromptCatalog {
 
     private final String chatSystemPrompt;
     private final String intentSystemPrompt;
+    private final String agentSystemPrompt;
     private final Clock clock;
 
     @Autowired
     public PromptCatalog(
             @Value("classpath:prompts/run-agent-system.txt") Resource chatSystemPrompt,
-            @Value("classpath:prompts/running-intent-system.txt") Resource intentSystemPrompt) {
-        this(chatSystemPrompt, intentSystemPrompt, Clock.systemDefaultZone());
+            @Value("classpath:prompts/running-intent-system.txt") Resource intentSystemPrompt,
+            @Value("classpath:prompts/run-agent-agent-system.txt") Resource agentSystemPrompt) {
+        this(chatSystemPrompt, intentSystemPrompt, agentSystemPrompt, Clock.systemDefaultZone());
+    }
+
+    public PromptCatalog(Resource chatSystemPrompt, Resource intentSystemPrompt) {
+        this(chatSystemPrompt, intentSystemPrompt, chatSystemPrompt, Clock.systemDefaultZone());
     }
 
     PromptCatalog(Resource chatSystemPrompt, Resource intentSystemPrompt, Clock clock) {
+        this(chatSystemPrompt, intentSystemPrompt, chatSystemPrompt, clock);
+    }
+
+    PromptCatalog(Resource chatSystemPrompt, Resource intentSystemPrompt, Resource agentSystemPrompt, Clock clock) {
         this.chatSystemPrompt = read(chatSystemPrompt);
         this.intentSystemPrompt = read(intentSystemPrompt);
+        this.agentSystemPrompt = read(agentSystemPrompt);
         this.clock = clock;
     }
 
@@ -39,6 +50,10 @@ public class PromptCatalog {
 
     public String runningIntentSystemPrompt() {
         return intentSystemPrompt.replace(CURRENT_DATE_TOKEN, LocalDate.now(clock).toString());
+    }
+
+    public String agentSystemPrompt() {
+        return agentSystemPrompt.replace(CURRENT_DATE_TOKEN, LocalDate.now(clock).toString());
     }
 
     private static String read(Resource resource) {

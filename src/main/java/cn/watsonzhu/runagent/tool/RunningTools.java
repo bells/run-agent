@@ -4,28 +4,28 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
+import java.util.function.Supplier;
 
+import cn.watsonzhu.runagent.agent.AgentExecutionTrace;
 import cn.watsonzhu.runagent.exception.InvalidRunningQueryException;
 import cn.watsonzhu.runagent.exception.RunningDataUnavailableException;
+import cn.watsonzhu.runagent.model.running.DistanceType;
+import cn.watsonzhu.runagent.model.running.PersonalBest;
+import cn.watsonzhu.runagent.model.running.RunningActivitySummary;
 import cn.watsonzhu.runagent.model.running.RunningSummary;
 import cn.watsonzhu.runagent.service.RunningDataService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
 
-/**
- * Spring AI 从 @Tool / @ToolParam 生成给模型看的工具定义；模型选中后，才由应用执行此方法。
- * 这里是参数和安全边界，文件读取与统计交给 RunningDataService。
- */
 @Component
 public class RunningTools {
-
     private static final Logger log = LoggerFactory.getLogger(RunningTools.class);
-    // 366 天允许完整闰年，同时阻止模型一次提出跨越多年的查询。
     private static final long MAX_QUERY_DAYS = 366;
-
     private final RunningDataService runningDataService;
 
     public RunningTools(RunningDataService runningDataService) {
@@ -33,37 +33,65 @@ public class RunningTools {
     }
 
     @Tool(name = "getRunningSummary", description = "Get the user's real historical running statistics "
-            + "for an inclusive date range. Use for questions about the user's own run count, total distance "
-            + "or total duration. Do not use for general running knowledge, training advice or definitions.")
+            + "for an inclusive date range. Use for own run count, total distance or duration. "
+            + "Call separately for each period in a comparison. Do not use for general knowledge.")
     public RunningSummary getRunningSummary(
             @ToolParam(description = "Inclusive start date in ISO-8601 yyyy-MM-dd format") String startDate,
-            @ToolParam(description = "Inclusive end date in ISO-8601 yyyy-MM-dd format") String endDate) {
-        long startedAt = System.nanoTime();
-        log.info("tool=getRunningSummary phase=SELECTED");
-        try {
-            // JSON Schema 主要引导模型生成参数，不能代替 Java 对不可信输入的实际校验。
-            LocalDate start = parseDate(startDate, "startDate");
-            LocalDate end = parseDate(endDate, "endDate");
-            if (start.isAfter(end)) {
-                throw new InvalidRunningQueryException("startDate must not be after endDate");
+            @ToolParam(description = "Inclusive end date in ISO-8601 yyyy-MM-dd format") String endDate,
+            ToolContext context) {
+        return execute("getRunningSummary", context, () -> {
+            DateRange range = parseRange(startDate, endDate);
+            return runningDataService.summarize(range.start(), range.end());
+        });
+    }
+
+    // Retain the v0.2 Java signature; only the annotated method is exposed as a Tool.
+    public RunningSummary getRunningSummary(String startDate, String endDate) {
+        return getRunningSummary(startDate, endDate, null);
+    }
+
+    @Tool(name = "getRecentRuns", description = "Get recent individual running activities in an inclusive date range. "
+            + "Use for individual workouts, pace, distance or recent frequency. Most recent first.")
+    public List<RunningActivitySummary> getRecentRuns(
+            @ToolParam(description = "Inclusive start date in ISO-8601 yyyy-MM-dd format") String startDate,
+            @ToolParam(description = "Inclusive end date in ISO-8601 yyyy-MM-dd format") String endDate,
+            @ToolParam(description = "Maximum number of runs, from 1 to 20") int limit,
+            ToolContext context) {
+        return execute("getRecentRuns", context, () -> {
+            DateRange range = parseRange(startDate, endDate);
+            if (limit < 1 || limit > 20) {
+                throw new InvalidRunningQueryException("limit must be between 1 and 20");
             }
-            if (ChronoUnit.DAYS.between(start, end) + 1 > MAX_QUERY_DAYS) {
-                throw new InvalidRunningQueryException("Date range must not exceed 366 inclusive days");
+            return runningDataService.recentRuns(range.start(), range.end(), limit);
+        });
+    }
+
+    @Tool(name = "getPersonalBest", description = "Find the fastest average-pace whole running activity near "
+            + "a standard distance. This is an approximate activity-level result, never an exact split or race PB.")
+    public PersonalBest getPersonalBest(
+            @ToolParam(description = "Standard distance: FIVE_K, TEN_K, HALF_MARATHON or MARATHON") String distanceType,
+            ToolContext context) {
+        return execute("getPersonalBest", context, () -> {
+            DistanceType type;
+            try {
+                type = DistanceType.valueOf(distanceType);
+            } catch (IllegalArgumentException | NullPointerException exception) {
+                throw new InvalidRunningQueryException("distanceType must be FIVE_K, TEN_K, HALF_MARATHON or MARATHON");
             }
-            log.info("tool=getRunningSummary phase=EXECUTING startDate={} endDate={}", start, end);
-            RunningSummary summary = runningDataService.summarize(start, end);
-            log.info("tool=getRunningSummary status=SUCCESS runCount={} totalDistanceKm={} latencyMs={}",
-                    summary.runCount(), summary.totalDistanceKm(), elapsedMillis(startedAt));
-            return summary;
-        } catch (InvalidRunningQueryException | RunningDataUnavailableException exception) {
-            log.warn("tool=getRunningSummary status=FAILED reason={} latencyMs={}",
-                    exception.getClass().getSimpleName(), elapsedMillis(startedAt));
-            throw exception;
-        } catch (RuntimeException exception) {
-            // 工具错误可能作为 Tool Result 再交给模型；统一错误文本，避免泄漏文件路径或解析细节。
-            log.warn("tool=getRunningSummary status=FAILED reason=Unexpected latencyMs={}", elapsedMillis(startedAt));
-            throw new RunningDataUnavailableException("Running data could not be retrieved");
+            return runningDataService.personalBest(type);
+        });
+    }
+
+    private static DateRange parseRange(String startDate, String endDate) {
+        LocalDate start = parseDate(startDate, "startDate");
+        LocalDate end = parseDate(endDate, "endDate");
+        if (start.isAfter(end)) {
+            throw new InvalidRunningQueryException("startDate must not be after endDate");
         }
+        if (ChronoUnit.DAYS.between(start, end) + 1 > MAX_QUERY_DAYS) {
+            throw new InvalidRunningQueryException("Date range must not exceed 366 inclusive days");
+        }
+        return new DateRange(start, end);
     }
 
     private static LocalDate parseDate(String value, String parameter) {
@@ -77,7 +105,34 @@ public class RunningTools {
         }
     }
 
+    private static <T> T execute(String name, ToolContext context, Supplier<T> action) {
+        AgentExecutionTrace trace = context == null ? null
+                : (AgentExecutionTrace) context.getContext().get(AgentExecutionTrace.CONTEXT_KEY);
+        String executionId = trace == null ? "none" : trace.executionId();
+        int step = trace == null ? 0 : trace.nextToolCall();
+        long startedAt = System.nanoTime();
+        log.info("agentExecutionId={} step={} tool={} phase=SELECTED", executionId, step, name);
+        try {
+            log.info("agentExecutionId={} step={} tool={} phase=EXECUTING", executionId, step, name);
+            T result = action.get();
+            log.info("agentExecutionId={} step={} tool={} status=SUCCESS latencyMs={}",
+                    executionId, step, name, elapsedMillis(startedAt));
+            return result;
+        } catch (InvalidRunningQueryException | RunningDataUnavailableException exception) {
+            log.warn("agentExecutionId={} step={} tool={} status=FAILED reason={} latencyMs={}",
+                    executionId, step, name, exception.getClass().getSimpleName(), elapsedMillis(startedAt));
+            throw exception;
+        } catch (RuntimeException exception) {
+            log.warn("agentExecutionId={} step={} tool={} status=FAILED reason=Unexpected latencyMs={}",
+                    executionId, step, name, elapsedMillis(startedAt));
+            throw new RunningDataUnavailableException("Running data could not be retrieved");
+        }
+    }
+
     private static long elapsedMillis(long startedAt) {
         return Duration.ofNanos(System.nanoTime() - startedAt).toMillis();
+    }
+
+    private record DateRange(LocalDate start, LocalDate end) {
     }
 }

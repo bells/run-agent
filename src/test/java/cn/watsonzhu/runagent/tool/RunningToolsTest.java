@@ -7,6 +7,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.LocalDate;
+import java.util.Map;
 
 import cn.watsonzhu.runagent.exception.InvalidRunningQueryException;
 import cn.watsonzhu.runagent.exception.RunningDataUnavailableException;
@@ -14,6 +15,8 @@ import cn.watsonzhu.runagent.model.running.RunningSummary;
 import cn.watsonzhu.runagent.service.RunningDataService;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.support.ToolCallbacks;
+import org.springframework.ai.chat.model.ToolContext;
+import cn.watsonzhu.runagent.agent.AgentExecutionTrace;
 
 class RunningToolsTest {
 
@@ -54,13 +57,48 @@ class RunningToolsTest {
     }
 
     @Test
-    void publishesOneDescribedToolSchema() {
+    void publishesThreeDescribedToolSchemasWithoutContext() {
         // 与 ChatClient 注册 POJO Tool 时使用同一转换入口，直接检查发给模型的定义。
         var callbacks = ToolCallbacks.from(tools);
-        assertThat(callbacks).hasSize(1);
-        var definition = callbacks[0].getToolDefinition();
+        assertThat(callbacks).hasSize(3);
+        assertThat(callbacks).extracting(callback -> callback.getToolDefinition().name())
+                .containsExactlyInAnyOrder("getRunningSummary", "getRecentRuns", "getPersonalBest");
+        var definition = java.util.Arrays.stream(callbacks)
+                .map(callback -> callback.getToolDefinition())
+                .filter(tool -> tool.name().equals("getRunningSummary"))
+                .findFirst().orElseThrow();
         assertThat(definition.name()).isEqualTo("getRunningSummary");
         assertThat(definition.description()).contains("real historical running statistics");
         assertThat(definition.inputSchema()).contains("startDate", "endDate", "Inclusive", "yyyy-MM-dd");
+        assertThat(callbacks).allSatisfy(callback ->
+                assertThat(callback.getToolDefinition().inputSchema()).doesNotContain("ToolContext", "agentExecution"));
+        assertThat(callbacks).anySatisfy(callback -> {
+            if (callback.getToolDefinition().name().equals("getRecentRuns")) {
+                assertThat(callback.getToolDefinition().inputSchema()).contains("limit", "startDate", "endDate");
+            }
+        });
+    }
+
+    @Test
+    void recentRunsRejectInvalidRangeAndLimit() {
+        assertThatThrownBy(() -> tools.getRecentRuns("2026-08-31", "2026-08-01", 5, null))
+                .isInstanceOf(InvalidRunningQueryException.class);
+        assertThatThrownBy(() -> tools.getRecentRuns("2025-01-01", "2026-08-31", 5, null))
+                .isInstanceOf(InvalidRunningQueryException.class);
+        assertThatThrownBy(() -> tools.getRecentRuns("2026-08-01", "2026-08-31", 0, null))
+                .isInstanceOf(InvalidRunningQueryException.class);
+        assertThatThrownBy(() -> tools.getRecentRuns("2026-08-01", "2026-08-31", 21, null))
+                .isInstanceOf(InvalidRunningQueryException.class);
+    }
+
+    @Test
+    void personalBestRejectsUnknownTypeAndTraceCountsCalls() {
+        assertThatThrownBy(() -> tools.getPersonalBest("5K", null))
+                .isInstanceOf(InvalidRunningQueryException.class);
+        AgentExecutionTrace trace = new AgentExecutionTrace("test-execution");
+        ToolContext context = new ToolContext(Map.of(AgentExecutionTrace.CONTEXT_KEY, trace));
+        tools.getRunningSummary("2026-08-01", "2026-08-31", context);
+        tools.getRecentRuns("2026-08-01", "2026-08-31", 5, context);
+        assertThat(trace.toolCallCount()).isEqualTo(2);
     }
 }

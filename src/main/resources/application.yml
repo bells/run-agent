@@ -2,6 +2,11 @@ spring:
   application:
     name: run-agent
   ai:
+    tools:
+      limits:
+        max-calls-per-tool-default: ${AGENT_MAX_CALLS_PER_TOOL:4}
+        max-total-tool-calls: ${AGENT_MAX_TOTAL_TOOL_CALLS:8}
+        on-limit-exceeded: THROW
     deepseek:
       api-key: ${DEEPSEEK_API_KEY:}
       base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}
@@ -15,6 +20,8 @@ server:
     include-stacktrace: never
 
 run-agent:
+  agent:
+    timeout: ${AGENT_TIMEOUT:30s}
   running-data:
     # 不配置时保持空值；只有模型请求 Running Tool 时才尝试读取文件。
     path: ${RUNNING_DATA_PATH:}

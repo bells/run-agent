@@ -1,94 +1,74 @@
-# RunAgent
+# RunAgent v0.3
 
-RunAgent 是 Watson 的个人跑步 AI 后端和 Java / Spring AI 学习项目。当前版本 **v0.2** 在 v0.1 的 Chat、SSE 和 Structured Output 基础上，增加一个只读 Running Tool。项目与 [Watson Running](https://github.com/bells/watson-running) 保持独立仓库和部署单元。
+RunAgent 是 Watson 的个人跑步 AI 后端与 Java / Spring AI 学习项目。它与 [Watson Running](https://github.com/bells/watson-running) 独立构建和部署。
 
-## v0.2 能力
+## 能力与边界
 
-- `POST /api/chat`：普通 Chat，可由模型选择 `getRunningSummary`。
-- `GET /api/chat/stream`：SSE Streaming Chat，同样可使用该 Tool。
-- `POST /api/intent`：保留 v0.1 Structured Output，不注册 Running Tool。
-- `getRunningSummary(startDate, endDate)`：读取可配置的 `activities.json`，由 Java 验证参数、筛选 Run 并聚合真实统计。
+- `POST /api/chat`：普通 Chat 和简单 Tool-aware Chat。
+- `GET /api/chat/stream`：UTF-8 SSE Chat，保留 `token` 与安全 `error` 事件。
+- `POST /api/intent`：Structured Output，不注册 Running Tools。
+- `POST /api/agent`：多步 Tool Calling，返回 `executionId`、实际执行的 `toolCallCount` 和最终 `content`。
+
+Tool Calling 使模型能够请求 Java 工具；Agent Loop 使模型在看到一次工具结果后继续决定是否调用工具，以及调用哪个工具。Tool Calling 是 Agent 的基础能力之一，但不等于完整 Agent。v0.3 每个请求独立运行，没有 Memory、RAG、数据库、多 Agent 或对话历史。下一阶段 v0.4 才研究 Memory。
 
 ```text
-User → RunAgentService → ChatClient → LLM
-                                  ↓ Tool Call Request
-                         Spring AI ToolCallingAdvisor
-                                  ↓
-                         RunningTools → RunningDataService → activities.json
-                                  ↓ Tool Result
-                         LLM → Final Answer
+User → POST /api/agent → RunAgentService → ChatClient → ToolCallingAdvisor → LLM
+                                                        ↑                  ↓
+                                                        └── Observation ← RunningTools
+                                                                            ↓
+                                                                  RunningDataService
+                                                                            ↓
+                                                                     activities.json
+                         no more tool calls → Final Answer
 ```
 
-LLM 选择是否调用 Tool 并生成日期参数；Java 执行工具、校验与统计。v0.2 仍不是完整的多步骤 Agent。具体过程见 [Tool Calling Flow](docs/tool-calling-flow.md)。
+比较两个时间段时，模型应分别调用 `getRunningSummary` 两次；需要个别训练时再调用 `getRecentRuns`。不提供 `compareRunningPeriods`，以便观察根据前一 Observation 作出的下一步决定。完整机制见 [Agent Loop](docs/agent-loop.md)；v0.2 的底层协议学习实验见 [Tool Calling Flow](docs/tool-calling-flow.md)。
 
-## 技术栈
+## 三个 Running Tools
 
-Java 21、Gradle Wrapper 9.7.1、Spring Boot 4.1.1、Spring AI 2.0.1、Spring WebFlux / Reactor、Bean Validation 和 JUnit 5。通过 `./gradlew` 运行。
+| Tool | 模型参数 | Java 返回及计算 |
+| --- | --- | --- |
+| `getRunningSummary` | `startDate`、`endDate`，两端包含 | Run 次数、总公里、总秒数 |
+| `getRecentRuns` | 同上，及 `limit` 1–20 | 按 `start_date_local` 降序的精简活动：日期、公里、秒数、秒/公里配速 |
+| `getPersonalBest` | `distanceType`：`FIVE_K`、`TEN_K`、`HALF_MARATHON`、`MARATHON` | 标准距离附近整次活动中平均配速最快的一次 |
+
+日期使用 ISO `yyyy-MM-dd`，查询区间最多 366 个自然日。只读取 `type=Run`。Java 负责过滤、排序、米转公里、时长解析与配速计算；模型负责决定、比较和解释。距离为 0 时配速为 `null`。返回模型的类型仅包含必要字段；GPS、经纬度、起终点与 Polyline 不进入 Tool Result。
+
+`getPersonalBest` 使用目标距离 **±5%** 的集中容差，按整次活动的未舍入平均配速选最快，再返回四舍五入的秒/公里配速。它是 **recorded activity-level estimate**：`approximate=true`、`calculationBasis=WHOLE_ACTIVITY_DISTANCE_MATCH`。JSON 没有 split、lap 或 segment，无法从 10.5 km 活动中计算精确 10K split PB。没有匹配时返回 `calculationBasis=NO_MATCHING_ACTIVITY` 和空日期，模型应说明没有对应记录。
 
 ## 配置与启动
 
-模型供应商为 DeepSeek。不要把真实密钥写入仓库：
+技术基线：Java 21、Gradle Wrapper 9.7.1、Spring Boot 4.1.1、Spring AI 2.0.1、WebFlux / Reactor、Bean Validation 和 JUnit 5。
 
 ```bash
 export DEEPSEEK_API_KEY="your-api-key"
-export DEEPSEEK_MODEL="deepseek-v4-pro"
 export RUNNING_DATA_PATH=/absolute/path/to/watson-running/src/static/activities.json
 ./gradlew bootRun
 ```
 
-`DEEPSEEK_BASE_URL` 可覆盖默认的 `https://api.deepseek.com`。`RUNNING_DATA_PATH` 对应 `run-agent.running-data.path`，必须指向生成后可读的 JSON 数组文件。源码仓库中的文件可能为空；未配置、文件缺失、空文件或内容损坏时，Tool 会报告数据无法读取，不会生成虚构统计。每次 Tool 调用重新读取文件，生成文件更新后无需重启。当前文件约 1.3 MB，这种简单策略足够。
+`DEEPSEEK_MODEL` 默认为 `deepseek-v4-pro`，`DEEPSEEK_BASE_URL` 默认指向 DeepSeek。请使用被 Git 忽略的本地配置存放真实密钥与路径。数据文件只读，每次工具执行重新加载；文件不可用时不会捏造个人统计。
 
-仓库提供 `application-local.yml.example`；本地可复制为被 Git 忽略的 `src/main/resources/application-local.yml`，再用 `--spring.profiles.active=local` 启动。真实密钥和路径不要提交。
+`spring.ai.tools.limits` 在 Spring AI 2.0.1 中绑定：每个 Tool 每轮最多 **4** 次、所有 Tool 合计最多 **8** 次，超限行为 `THROW`。可通过 `AGENT_MAX_CALLS_PER_TOOL` 和 `AGENT_MAX_TOTAL_TOOL_CALLS` 覆盖。Advisor 将超限转成 `toolCallLimitExceeded` finish reason；服务将它映射成安全的 `AGENT_TOOL_LIMIT` 错误。Tool call limits are safety boundaries, not business retry policies.
+
+`/api/agent` 默认请求级超时 **30s**，可用 `AGENT_TIMEOUT` 覆盖，例如 `45s`。这是应用层 deadline 与尽力取消；阻塞的 Provider HTTP 调用不保证立即中断。超时返回 `AGENT_TIMEOUT`。每次 Agent 请求生成 UUID，工具日志记录 `agentExecutionId`、`step`、工具名、状态和耗时；step 只是 Tool execution sequence number。Agent trace observes actions, not hidden model reasoning。日志不记录用户消息、完整 Prompt、密钥或轨迹。
+
+## API 示例
+
+```bash
+curl -X POST http://localhost:8080/api/agent \
+  -H 'Content-Type: application/json' \
+  -d '{"message":"比较我最近30天和之前30天的跑步情况，再结合最近5次跑步分析训练状态。"}'
+```
+
+```json
+{"executionId":"<uuid>","toolCallCount":3,"content":"..."}
+```
+
+实际 Tool 顺序由模型决定，示例次数不保证。通用问题如“什么是节奏跑？”无需 Tool。`/api/chat` 继续返回 `{"content":"..."}`；`/api/intent` 继续返回 `RunningIntent`。
 
 ```bash
 ./gradlew test
 ./gradlew build
 ```
 
-## API 示例
-
-个人数据问题会让模型选择 Tool：
-
-```bash
-curl -X POST http://localhost:8080/api/chat \
-  -H 'Content-Type: application/json' \
-  -d '{"message":"我今年跑了多少公里？"}'
-```
-
-通用知识问题应直接回答，不需要 Running Tool：
-
-```bash
-curl -X POST http://localhost:8080/api/chat \
-  -H 'Content-Type: application/json' \
-  -d '{"message":"什么是LSD长距离慢跑？"}'
-```
-
-普通 Chat 返回 `{"content":"..."}`。Streaming 使用 `curl -N 'http://localhost:8080/api/chat/stream?message=hello'`，响应为 `text/event-stream;charset=UTF-8`，正常片段为 `token` 事件；流开始后的错误为安全的 `error` 事件。客户端断开会传播取消信号。`/api/intent` 继续接受 `POST {"message":"帮我分析最近一个月的跑步情况"}` 并返回 `RunningIntent`。
-
-观察服务日志中的 `AI chat request started`、`tool=getRunningSummary phase=SELECTED`、`phase=EXECUTING startDate=... endDate=...`、`status=SUCCESS/FAILED` 与最终 AI 完成记录。日志不包含活动明细、GPS、Polyline、消息正文或密钥。
-
-## 数据与校验
-
-数据源只映射 `run_id`、`type`、`distance`、`moving_time` 和 `start_date_local`。仅 `type=Run` 计入统计；日期范围 `[startDate, endDate]` 两端都包含。Tool 参数必须是 ISO `yyyy-MM-dd`、起始日不晚于结束日、最多 **366 个自然日**。`moving_time` 解析为秒，距离从米累加后转换为公里；这些确定性计算均由 Java 完成。无匹配 Run 时返回零值 Summary。源文件不可用或数据格式错误时返回安全错误，不把文件路径或解析细节交给模型。Tool 结果仅包含起止日期、跑步次数、总距离公里和总时长秒数。
-
-## Tool Calling 与 Structured Output
-
-| 能力 | 流程 | 解决的问题 |
-| --- | --- | --- |
-| Structured Output | LLM → `RunningIntent` Java 对象 | 模型最终返回什么结构 |
-| Tool Calling | LLM → Tool Call → Java 执行 → Tool Result → LLM | 模型何时使用外部能力 |
-
-`/api/intent` 继续使用 `ChatClient.call().entity(RunningIntent.class)`；Tool 只提供给 Chat 路径。`RunAgentService` 集中管理 ChatClient，Controller 只适配 HTTP。同步模型调用在 WebFlux 的 `boundedElastic` 上执行；Streaming 保留 Reactor `Flux` 链路。
-
-## Roadmap
-
-```text
-v0.3 Agent Loop
-v0.4 Memory
-v0.5 RAG
-v0.6 MCP
-v0.7 Evaluation / Observability
-v0.8 Workflow / Multi-Agent
-```
-
-本阶段不引入数据库、RAG、MCP、自定义 Agent Loop 或更多 Running Tool。跨仓库边界见 [Watson Running Integration Boundary](docs/watson-running-integration.md)；代码 Agent 约定见 [AGENTS.md](AGENTS.md)。
+自动测试使用本地合成数据与 stub 模型，不调用真实 DeepSeek。真实多轮效果需要在有 Key 和只读 Running Data 时手动观察 `executionId`、Tool 顺序、次数和最终回答。跨仓库边界见 [Watson Running Integration Boundary](docs/watson-running-integration.md)。

@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -23,6 +24,7 @@ import cn.watsonzhu.runagent.service.RunningDataService;
 import org.junit.jupiter.api.Test;
 import static org.mockito.Mockito.mock;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.client.advisor.ToolCallingAdvisor;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.ai.chat.model.ChatModel;
@@ -30,12 +32,93 @@ import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.model.tool.ToolCallingChatOptions;
+import org.springframework.ai.model.tool.ToolCallingManager;
+import cn.watsonzhu.runagent.exception.AgentLimitException;
+import cn.watsonzhu.runagent.model.running.RunningActivitySummary;
+import io.micrometer.observation.ObservationRegistry;
 import org.springframework.core.io.ByteArrayResource;
 import reactor.core.publisher.Flux;
 import reactor.test.StepVerifier;
 
 /** 用本地 StubChatModel 观察 Spring AI 的请求与回合，不依赖真实模型或 API Key。 */
 class RunAgentServiceTest {
+
+    @Test
+    void agentExecutesThreeDynamicToolCallsAndCountsThem() {
+        RunningDataService data = mock(RunningDataService.class);
+        LocalDate recentStart = LocalDate.of(2026, 8, 1);
+        LocalDate recentEnd = LocalDate.of(2026, 8, 30);
+        LocalDate previousStart = LocalDate.of(2026, 7, 2);
+        LocalDate previousEnd = LocalDate.of(2026, 7, 31);
+        when(data.summarize(recentStart, recentEnd))
+                .thenReturn(new RunningSummary(recentStart, recentEnd, 5, 50, 18000));
+        when(data.summarize(previousStart, previousEnd))
+                .thenReturn(new RunningSummary(previousStart, previousEnd, 3, 30, 12000));
+        when(data.recentRuns(recentStart, recentEnd, 5))
+                .thenReturn(List.of(new RunningActivitySummary(1, recentEnd, 10, 3600, 360)));
+        AtomicInteger requests = new AtomicInteger();
+        ChatModel model = new ChatModel() {
+            @Override public ToolCallingChatOptions getOptions() {
+                return ToolCallingChatOptions.builder().build();
+            }
+            @Override public ChatResponse call(Prompt prompt) {
+                int round = requests.getAndIncrement();
+                assertThat(prompt.getInstructions().stream().filter(ToolResponseMessage.class::isInstance).count())
+                        .isEqualTo(round);
+                return switch (round) {
+                    case 0 -> toolCall("getRunningSummary", "{" +
+                            "\"startDate\":\"2026-08-01\",\"endDate\":\"2026-08-30\"}");
+                    case 1 -> toolCall("getRunningSummary", "{" +
+                            "\"startDate\":\"2026-07-02\",\"endDate\":\"2026-07-31\"}");
+                    case 2 -> toolCall("getRecentRuns", "{" +
+                            "\"startDate\":\"2026-08-01\",\"endDate\":\"2026-08-30\",\"limit\":5}");
+                    default -> response("Recent period improved based on retrieved data.");
+                };
+            }
+            @Override public Flux<ChatResponse> stream(Prompt prompt) {
+                return Flux.error(new UnsupportedOperationException());
+            }
+        };
+        var result = serviceWith(model, data).agent("compare two periods and recent runs");
+        assertThat(result.executionId()).isNotBlank();
+        assertThat(result.toolCallCount()).isEqualTo(3);
+        assertThat(result.content()).contains("improved");
+        assertThat(requests.get()).isEqualTo(4);
+        verify(data).summarize(recentStart, recentEnd);
+        verify(data).summarize(previousStart, previousEnd);
+        verify(data).recentRuns(recentStart, recentEnd, 5);
+    }
+
+    @Test
+    void agentStopsWhenFrameworkToolLimitIsExceeded() {
+        RunningDataService data = mock(RunningDataService.class);
+        LocalDate start = LocalDate.of(2026, 8, 1);
+        LocalDate end = LocalDate.of(2026, 8, 31);
+        when(data.summarize(start, end)).thenReturn(new RunningSummary(start, end, 1, 5, 1500));
+        AtomicInteger requests = new AtomicInteger();
+        ChatModel model = new ChatModel() {
+            @Override public ToolCallingChatOptions getOptions() {
+                return ToolCallingChatOptions.builder().build();
+            }
+            @Override public ChatResponse call(Prompt prompt) {
+                requests.incrementAndGet();
+                return toolCall("getRunningSummary",
+                        "{\"startDate\":\"2026-08-01\",\"endDate\":\"2026-08-31\"}");
+            }
+            @Override public Flux<ChatResponse> stream(Prompt prompt) {
+                return Flux.error(new UnsupportedOperationException());
+            }
+        };
+        var manager = ToolCallingManager.builder().maxCallsPerTool(2).maxTotalToolCalls(3).build();
+        var builder = ChatClient.builder(model, ObservationRegistry.NOOP, null, null,
+                ToolCallingAdvisor.builder().toolCallingManager(manager));
+        var prompts = new PromptCatalog(resource("chat"), resource("intent"));
+        var service = new RunAgentService(builder, prompts, new RunningTools(data));
+        assertThatThrownBy(() -> service.agent("keep checking"))
+                .isInstanceOf(AgentLimitException.class);
+        assertThat(requests.get()).isEqualTo(3);
+        org.mockito.Mockito.verify(data, org.mockito.Mockito.times(2)).summarize(start, end);
+    }
 
     @Test
     void chatUsesAStubChatModelWithoutExternalCalls() {
@@ -246,6 +329,13 @@ class RunAgentServiceTest {
                 .content("")
                 .toolCalls(List.of(new AssistantMessage.ToolCall("call-1", "function", "getRunningSummary",
                         "{\"startDate\":\"2026-08-01\",\"endDate\":\"2026-08-31\"}")))
+                .build())));
+    }
+
+    private static ChatResponse toolCall(String name, String arguments) {
+        return new ChatResponse(List.of(new Generation(AssistantMessage.builder()
+                .content("")
+                .toolCalls(List.of(new AssistantMessage.ToolCall("call-1", "function", name, arguments)))
                 .build())));
     }
 

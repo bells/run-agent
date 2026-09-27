@@ -6,7 +6,7 @@ import cn.watsonzhu.runagent.agent.RunAgentService;
 import cn.watsonzhu.runagent.config.AgentProperties;
 import cn.watsonzhu.runagent.exception.AgentTimeoutException;
 import cn.watsonzhu.runagent.model.AgentResponse;
-import cn.watsonzhu.runagent.model.ChatRequest;
+import cn.watsonzhu.runagent.model.AgentRequest;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -27,8 +27,8 @@ public class AgentController {
     }
 
     @PostMapping
-    public Mono<AgentResponse> agent(@Valid @RequestBody ChatRequest request) {
-        return Mono.fromCallable(() -> service.agent(request.message()))
+    public Mono<AgentResponse> agent(@Valid @RequestBody AgentRequest request) {
+        return Mono.fromCallable(() -> service.agent(request.conversationId(), request.message()))
                 .subscribeOn(Schedulers.boundedElastic())
                 .timeout(properties.timeout())
                 .onErrorMap(TimeoutException.class, exception -> new AgentTimeoutException());

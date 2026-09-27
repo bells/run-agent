@@ -14,6 +14,9 @@ import cn.watsonzhu.runagent.tool.RunningTools;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
+import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.ai.chat.metadata.EmptyUsage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.model.tool.ToolCallLimitExceededException;
 import org.springframework.stereotype.Service;
@@ -28,11 +31,16 @@ public class RunAgentService {
     private final ChatClient chatClient;
     private final PromptCatalog prompts;
     private final RunningTools runningTools;
+    private final ChatMemory chatMemory;
+    private final MessageChatMemoryAdvisor memoryAdvisor;
 
-    public RunAgentService(ChatClient.Builder chatClientBuilder, PromptCatalog prompts, RunningTools runningTools) {
+    public RunAgentService(ChatClient.Builder chatClientBuilder, PromptCatalog prompts, RunningTools runningTools,
+                           ChatMemory chatMemory) {
         this.chatClient = chatClientBuilder.build();
         this.prompts = prompts;
         this.runningTools = runningTools;
+        this.chatMemory = chatMemory;
+        this.memoryAdvisor = MessageChatMemoryAdvisor.builder(chatMemory).build();
     }
 
     public String chat(String message) {
@@ -56,15 +64,20 @@ public class RunAgentService {
         }
     }
 
-    public AgentResponse agent(String message) {
-        AgentExecutionTrace trace = new AgentExecutionTrace(UUID.randomUUID().toString());
+    public AgentResponse agent(String requestedConversationId, String message) {
+        String conversationId = requestedConversationId == null ? UUID.randomUUID().toString() : requestedConversationId;
+        AgentExecutionTrace trace = new AgentExecutionTrace(UUID.randomUUID().toString(), conversationId);
         long startedAt = System.nanoTime();
-        log.info("agentExecutionId={} phase=STARTED", trace.executionId());
         try {
+            int memoryMessagesBefore = chatMemory.get(conversationId).size();
+            log.info("conversationId={} agentExecutionId={} phase=STARTED memoryMessagesBefore={}",
+                    conversationId, trace.executionId(), memoryMessagesBefore);
             // Agent 需要完整响应的 finishReason，以识别框架转换后的 Tool 超限结果；content() 会丢掉该元数据。
             ChatResponse response = chatClient.prompt()
                     .system(prompts.agentSystemPrompt())
                     .user(message)
+                    .advisors(memoryAdvisor)
+                    .advisors(advisors -> advisors.param(ChatMemory.CONVERSATION_ID, conversationId))
                     .tools(runningTools)
                     // 同一请求的 Tool 调用共享 trace，计数与 executionId 不依赖线程局部或全局状态。
                     .toolContext(Map.of(AgentExecutionTrace.CONTEXT_KEY, trace))
@@ -77,16 +90,27 @@ public class RunAgentService {
             }
             String content = response == null || response.getResult() == null
                     ? "" : response.getResult().getOutput().getText();
-            log.info("agentExecutionId={} phase=COMPLETED toolCalls={} latencyMs={}",
-                    trace.executionId(), trace.toolCallCount(), elapsedMillis(startedAt));
-            return new AgentResponse(trace.executionId(), trace.toolCallCount(), content == null ? "" : content);
+            int memoryMessagesAfter = chatMemory.get(conversationId).size();
+            log.info("conversationId={} agentExecutionId={} phase=COMPLETED toolCalls={} memoryMessagesAfter={} latencyMs={}",
+                    conversationId, trace.executionId(), trace.toolCallCount(), memoryMessagesAfter,
+                    elapsedMillis(startedAt));
+            if (response != null && response.getMetadata() != null
+                    && response.getMetadata().getUsage() != null
+                    && !(response.getMetadata().getUsage() instanceof EmptyUsage)) {
+                var usage = response.getMetadata().getUsage();
+                log.info("conversationId={} agentExecutionId={} promptTokens={} completionTokens={} totalTokens={}",
+                        conversationId, trace.executionId(), usage.getPromptTokens(), usage.getCompletionTokens(),
+                        usage.getTotalTokens());
+            }
+            return new AgentResponse(conversationId, trace.executionId(), trace.toolCallCount(),
+                    content == null ? "" : content);
         } catch (AgentLimitException exception) {
-            log.warn("agentExecutionId={} phase=LIMIT_EXCEEDED toolCalls={} latencyMs={}",
-                    trace.executionId(), trace.toolCallCount(), elapsedMillis(startedAt));
+            log.warn("conversationId={} agentExecutionId={} phase=LIMIT_EXCEEDED toolCalls={} latencyMs={}",
+                    conversationId, trace.executionId(), trace.toolCallCount(), elapsedMillis(startedAt));
             throw exception;
         } catch (RuntimeException exception) {
-            log.warn("agentExecutionId={} phase=FAILED toolCalls={} latencyMs={}",
-                    trace.executionId(), trace.toolCallCount(), elapsedMillis(startedAt));
+            log.warn("conversationId={} agentExecutionId={} phase=FAILED toolCalls={} latencyMs={}",
+                    conversationId, trace.executionId(), trace.toolCallCount(), elapsedMillis(startedAt));
             throw new AiRequestException("Agent model invocation failed", exception);
         }
     }

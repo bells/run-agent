@@ -52,6 +52,6 @@ Java 负责日期和 limit 校验、过滤 `Run`、排序、距离与时长单�
 
 ## 阶段边界与验证
 
-每次 `/api/agent` 是独立请求；v0.3 没有 conversation ID、Chat History 或 Memory。v0.4 再研究这些能力。跑步数据是结构化 JSON，经 Tool 读取；本阶段不需要 Embedding、Retriever 或 RAG，也不使用多 Agent。
+本页记录 v0.3 的单次请求 Agent Loop。v0.4 已为 `/api/agent` 增加有界跨请求 Conversation Memory；详见 [Conversation Memory](memory.md)。跑步数据仍是结构化 JSON，经 Tool 读取；没有 Embedding、Retriever、RAG 或多 Agent。
 
 自动测试覆盖 Tool Schema、数据计算、请求校验、三次动态 Tool 调用、框架超限标记和请求超时，不触发真实 DeepSeek。实际模型可能并行请求多个 Tool，或以不同顺序调用；真实验收需要启动服务、发出比较问题，并核对本次请求的 `executionId`、日志步骤、`toolCallCount` 与回答内容。

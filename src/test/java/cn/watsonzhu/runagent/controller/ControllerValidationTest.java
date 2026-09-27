@@ -2,6 +2,8 @@ package cn.watsonzhu.runagent.controller;
 
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 import java.time.Duration;
 
@@ -98,24 +100,60 @@ class ControllerValidationTest {
 
     @Test
     void agentReturnsExecutionMetadata() {
-        when(service.agent("analyze"))
-                .thenReturn(new AgentResponse("execution-1", 3, "result"));
+        when(service.agent(null, "analyze"))
+                .thenReturn(new AgentResponse("generated-1", "execution-1", 3, "result"));
         webTestClient.post().uri("/api/agent")
                 .bodyValue("{\"message\":\"analyze\"}")
                 .header("Content-Type", "application/json")
                 .exchange()
                 .expectStatus().isOk()
                 .expectBody()
+                .jsonPath("$.conversationId").isEqualTo("generated-1")
                 .jsonPath("$.executionId").isEqualTo("execution-1")
                 .jsonPath("$.toolCallCount").isEqualTo(3)
                 .jsonPath("$.content").isEqualTo("result");
     }
 
     @Test
+    void agentAcceptsClientConversationId() {
+        when(service.agent("run-session-1", "analyze"))
+                .thenReturn(new AgentResponse("run-session-1", "execution-2", 0, "result"));
+        webTestClient.post().uri("/api/agent")
+                .bodyValue("{\"conversationId\":\"run-session-1\",\"message\":\"analyze\"}")
+                .header("Content-Type", "application/json")
+                .exchange().expectStatus().isOk()
+                .expectBody().jsonPath("$.conversationId").isEqualTo("run-session-1");
+        verify(service).agent("run-session-1", "analyze");
+    }
+
+    @Test
+    void agentRejectsMissingAndOversizedMessage() {
+        assertInvalidAgent("{}");
+        assertInvalidAgent("{\"message\":\"" + "x".repeat(4_001) + "\"}");
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void agentRejectsUnsafeConversationIds() {
+        assertInvalidAgent("{\"conversationId\":\"\",\"message\":\"hello\"}");
+        assertInvalidAgent("{\"conversationId\":\"bad\\nline\",\"message\":\"hello\"}");
+        assertInvalidAgent("{\"conversationId\":\"bad/id\",\"message\":\"hello\"}");
+        assertInvalidAgent("{\"conversationId\":\"" + "x".repeat(101) + "\",\"message\":\"hello\"}");
+        verifyNoInteractions(service);
+    }
+
+    private void assertInvalidAgent(String body) {
+        webTestClient.post().uri("/api/agent")
+                .bodyValue(body).header("Content-Type", "application/json")
+                .exchange().expectStatus().isBadRequest()
+                .expectBody().jsonPath("$.code").isEqualTo("INVALID_REQUEST");
+    }
+
+    @Test
     void agentTimeoutHasSafeErrorBody() {
-        when(service.agent("slow")).thenAnswer(invocation -> {
+        when(service.agent(null, "slow")).thenAnswer(invocation -> {
             Thread.sleep(200);
-            return new AgentResponse("late", 0, "late");
+            return new AgentResponse("generated-2", "late", 0, "late");
         });
         webTestClient.post().uri("/api/agent")
                 .bodyValue("{\"message\":\"slow\"}")

@@ -22,6 +22,8 @@ server:
 run-agent:
   agent:
     timeout: ${AGENT_TIMEOUT:30s}
+  memory:
+    max-messages: ${AGENT_MEMORY_MAX_MESSAGES:20}
   running-data:
     # 不配置时保持空值；只有模型请求 Running Tool 时才尝试读取文件。
     path: ${RUNNING_DATA_PATH:}

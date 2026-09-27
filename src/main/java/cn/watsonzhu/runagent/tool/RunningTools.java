@@ -109,22 +109,23 @@ public class RunningTools {
         AgentExecutionTrace trace = context == null ? null
                 : (AgentExecutionTrace) context.getContext().get(AgentExecutionTrace.CONTEXT_KEY);
         String executionId = trace == null ? "none" : trace.executionId();
+        String conversationId = trace == null ? "none" : trace.conversationId();
         int step = trace == null ? 0 : trace.nextToolCall();
         long startedAt = System.nanoTime();
-        log.info("agentExecutionId={} step={} tool={} phase=SELECTED", executionId, step, name);
+        log.info("conversationId={} agentExecutionId={} step={} tool={} phase=SELECTED", conversationId, executionId, step, name);
         try {
-            log.info("agentExecutionId={} step={} tool={} phase=EXECUTING", executionId, step, name);
+            log.info("conversationId={} agentExecutionId={} step={} tool={} phase=EXECUTING", conversationId, executionId, step, name);
             T result = action.get();
-            log.info("agentExecutionId={} step={} tool={} status=SUCCESS latencyMs={}",
-                    executionId, step, name, elapsedMillis(startedAt));
+            log.info("conversationId={} agentExecutionId={} step={} tool={} status=SUCCESS latencyMs={}",
+                    conversationId, executionId, step, name, elapsedMillis(startedAt));
             return result;
         } catch (InvalidRunningQueryException | RunningDataUnavailableException exception) {
-            log.warn("agentExecutionId={} step={} tool={} status=FAILED reason={} latencyMs={}",
-                    executionId, step, name, exception.getClass().getSimpleName(), elapsedMillis(startedAt));
+            log.warn("conversationId={} agentExecutionId={} step={} tool={} status=FAILED reason={} latencyMs={}",
+                    conversationId, executionId, step, name, exception.getClass().getSimpleName(), elapsedMillis(startedAt));
             throw exception;
         } catch (RuntimeException exception) {
-            log.warn("agentExecutionId={} step={} tool={} status=FAILED reason=Unexpected latencyMs={}",
-                    executionId, step, name, elapsedMillis(startedAt));
+            log.warn("conversationId={} agentExecutionId={} step={} tool={} status=FAILED reason=Unexpected latencyMs={}",
+                    conversationId, executionId, step, name, elapsedMillis(startedAt));
             throw new RunningDataUnavailableException("Running data could not be retrieved");
         }
     }

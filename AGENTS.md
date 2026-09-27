@@ -22,15 +22,16 @@ Java 21 / Spring Boot / Spring AI
 
 ## 当前阶段
 
-当前版本是 v0.3，已经实现：
+当前版本是 v0.4，已经实现：
 
 - `POST /api/chat`：普通 Chat。
 - `GET /api/chat/stream`：UTF-8 SSE Streaming Chat。
 - `POST /api/intent`：`RunningIntent` Structured Output。
 - `getRunningSummary`：通过配置的本地 `activities.json` 只读统计真实跑步数据；普通与 Streaming Chat 可使用。
 - `POST /api/agent`：基于 Spring AI ToolCallingAdvisor 的多步 Tool Calling；新增 `getRecentRuns`、`getPersonalBest`、调用限制、请求超时和执行 trace。
+- v0.4 为 `/api/agent` 加入基于 `conversationId` 的短期有界 Conversation Memory；其余 API 仍无状态。详情见 `docs/memory.md`。
 
-v0.3 不实现自定义 Agent Loop、Memory、数据库、Embedding、RAG、MCP、Workflow、LangGraph、Multi-Agent、复杂认证或完整 Observability。后续能力必须按版本目标逐步加入。
+v0.4 不实现自定义 Agent Loop、长期 Memory、数据库、Embedding、RAG、MCP、Workflow、LangGraph、Multi-Agent、复杂认证或完整 Observability。后续能力必须按版本目标逐步加入。
 
 ## 已验证技术基线
 
@@ -96,7 +97,7 @@ Controller -> RunAgentService -> ChatClient -> LLM
 - `watson-running` 负责 React/TypeScript UI、地图、图表、统计、历史展示及现有静态数据生成流程。
 - RunAgent 负责 AI 模型接入、服务端分析以及未来的 Tool、Memory、RAG、MCP、Evaluation 和服务端授权。
 - 不要把 Java/Spring AI、模型密钥、Memory 或 Agent 业务逻辑复制到前端仓库。
-- v0.3 仅在显式配置 `RUNNING_DATA_PATH` 后只读访问生成后的 `activities.json`，不修改它。不要直接共享或修改 SQLite、GPX、TCX、FIT 或 SVG 资产；后续正式集成应评审只读契约或受控导出。
+- 当前仅在显式配置 `RUNNING_DATA_PATH` 后只读访问生成后的 `activities.json`，不修改它。不要直接共享或修改 SQLite、GPX、TCX、FIT 或 SVG 资产；后续正式集成应评审只读契约或受控导出。
 - 跑步轨迹包含精确位置。原始轨迹、起终点、平台凭据和仓库 Secrets 默认不得发送给浏览器或 LLM。
 - 跨仓库任务先检查两个工作树，并分别报告修改和验证结果；不得顺手改动历史仓库 `running_page`。
 
@@ -127,8 +128,8 @@ Controller -> RunAgentService -> ChatClient -> LLM
 ## Roadmap 扩展顺序
 
 ```text
-v0.3 Agent Loop (current)
-v0.4 Memory
+v0.3 Agent Loop
+v0.4 Memory (current)
 v0.5 RAG
 v0.6 MCP
 v0.7 Evaluation / Observability

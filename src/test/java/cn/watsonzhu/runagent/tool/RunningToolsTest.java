@@ -95,7 +95,7 @@ class RunningToolsTest {
     void personalBestRejectsUnknownTypeAndTraceCountsCalls() {
         assertThatThrownBy(() -> tools.getPersonalBest("5K", null))
                 .isInstanceOf(InvalidRunningQueryException.class);
-        AgentExecutionTrace trace = new AgentExecutionTrace("test-execution");
+        AgentExecutionTrace trace = new AgentExecutionTrace("test-execution", "test-conversation");
         ToolContext context = new ToolContext(Map.of(AgentExecutionTrace.CONTEXT_KEY, trace));
         tools.getRunningSummary("2026-08-01", "2026-08-31", context);
         tools.getRecentRuns("2026-08-01", "2026-08-31", 5, context);

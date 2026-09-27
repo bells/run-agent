@@ -24,9 +24,12 @@ import cn.watsonzhu.runagent.service.RunningDataService;
 import org.junit.jupiter.api.Test;
 import static org.mockito.Mockito.mock;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.chat.client.advisor.ToolCallingAdvisor;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.ToolResponseMessage;
+import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
@@ -79,7 +82,8 @@ class RunAgentServiceTest {
                 return Flux.error(new UnsupportedOperationException());
             }
         };
-        var result = serviceWith(model, data).agent("compare two periods and recent runs");
+        var result = serviceWith(model, data).agent("comparison", "compare two periods and recent runs");
+        assertThat(result.conversationId()).isEqualTo("comparison");
         assertThat(result.executionId()).isNotBlank();
         assertThat(result.toolCallCount()).isEqualTo(3);
         assertThat(result.content()).contains("improved");
@@ -113,11 +117,75 @@ class RunAgentServiceTest {
         var builder = ChatClient.builder(model, ObservationRegistry.NOOP, null, null,
                 ToolCallingAdvisor.builder().toolCallingManager(manager));
         var prompts = new PromptCatalog(resource("chat"), resource("intent"));
-        var service = new RunAgentService(builder, prompts, new RunningTools(data));
-        assertThatThrownBy(() -> service.agent("keep checking"))
+        var service = new RunAgentService(builder, prompts, new RunningTools(data), memory());
+        assertThatThrownBy(() -> service.agent("limit", "keep checking"))
                 .isInstanceOf(AgentLimitException.class);
         assertThat(requests.get()).isEqualTo(3);
         org.mockito.Mockito.verify(data, org.mockito.Mockito.times(2)).summarize(start, end);
+    }
+
+    @Test
+    void agentRetrievesConversationMemoryWhileToolsRemainAvailable() {
+        RunningDataService data = mock(RunningDataService.class);
+        LocalDate start = LocalDate.of(2026, 8, 1);
+        LocalDate end = LocalDate.of(2026, 8, 31);
+        when(data.summarize(start, end)).thenReturn(new RunningSummary(start, end, 2, 15, 3600));
+        AtomicInteger calls = new AtomicInteger();
+        ChatModel model = new ChatModel() {
+            @Override public ToolCallingChatOptions getOptions() {
+                return ToolCallingChatOptions.builder().build();
+            }
+            @Override public ChatResponse call(Prompt prompt) {
+                int call = calls.getAndIncrement();
+                if (call == 2) {
+                    assertThat(prompt.getInstructions()).anyMatch(message ->
+                            message instanceof UserMessage && message.getText().equals("first period"));
+                    assertThat(prompt.getInstructions()).anyMatch(message ->
+                            message instanceof AssistantMessage && message.getText().equals("First answer"));
+                    assertThat(prompt.getInstructions()).noneMatch(ToolResponseMessage.class::isInstance);
+                }
+                if (call == 4) {
+                    assertThat(prompt.getInstructions()).noneMatch(message ->
+                            message instanceof UserMessage && message.getText().equals("first period"));
+                }
+                return switch (call) {
+                    case 0, 2 -> toolCall("getRunningSummary",
+                            "{\"startDate\":\"2026-08-01\",\"endDate\":\"2026-08-31\"}");
+                    case 1 -> response("First answer");
+                    case 3 -> response("Follow-up answer");
+                    default -> response("Other conversation");
+                };
+            }
+            @Override public Flux<ChatResponse> stream(Prompt prompt) {
+                return Flux.error(new UnsupportedOperationException());
+            }
+        };
+        ChatMemory memory = memory();
+        PromptCatalog prompts = new PromptCatalog(resource("Chat"), resource("Intent"));
+        RunAgentService service = new RunAgentService(ChatClient.builder(model), prompts, new RunningTools(data), memory);
+        var first = service.agent("A", "first period");
+        var second = service.agent("A", "follow up");
+        var other = service.agent("B", "separate");
+
+        assertThat(first.conversationId()).isEqualTo("A");
+        assertThat(second.conversationId()).isEqualTo("A");
+        assertThat(second.executionId()).isNotEqualTo(first.executionId());
+        assertThat(first.toolCallCount()).isEqualTo(1);
+        assertThat(second.toolCallCount()).isEqualTo(1);
+        assertThat(other.conversationId()).isEqualTo("B");
+        assertThat(memory.get("A")).hasSize(4).noneMatch(ToolResponseMessage.class::isInstance);
+        assertThat(memory.get("B")).hasSize(2);
+        org.mockito.Mockito.verify(data, org.mockito.Mockito.times(2)).summarize(start, end);
+    }
+
+    @Test
+    void agentGeneratesConversationIdWhenMissing() {
+        RunAgentService service = serviceWith(new StubChatModel("hello"));
+        var first = service.agent(null, "hello");
+        var second = service.agent(null, "hello again");
+        assertThat(first.conversationId()).matches("[a-f0-9-]{36}");
+        assertThat(second.conversationId()).isNotEqualTo(first.conversationId());
+        assertThat(second.executionId()).isNotEqualTo(first.executionId());
     }
 
     @Test
@@ -313,7 +381,11 @@ class RunAgentServiceTest {
                 resource("You are RunAgent."),
                 resource("Classify the running intent. Today is {{CURRENT_DATE}}."));
         return new RunAgentService(ChatClient.builder(chatModel), prompts,
-                new RunningTools(data));
+                new RunningTools(data), memory());
+    }
+
+    private static ChatMemory memory() {
+        return MessageWindowChatMemory.builder().maxMessages(20).build();
     }
 
     private static ByteArrayResource resource(String content) {

@@ -1,4 +1,4 @@
-# RunAgent v0.3
+# RunAgent v0.4
 
 RunAgent 是 Watson 的个人跑步 AI 后端与 Java / Spring AI 学习项目。它与 [Watson Running](https://github.com/bells/watson-running) 独立构建和部署。
 
@@ -7,22 +7,40 @@ RunAgent 是 Watson 的个人跑步 AI 后端与 Java / Spring AI 学习项目�
 - `POST /api/chat`：普通 Chat 和简单 Tool-aware Chat。
 - `GET /api/chat/stream`：UTF-8 SSE Chat，保留 `token` 与安全 `error` 事件。
 - `POST /api/intent`：Structured Output，不注册 Running Tools。
-- `POST /api/agent`：多步 Tool Calling，返回 `executionId`、实际执行的 `toolCallCount` 和最终 `content`。
+- `POST /api/agent`：多步 Tool Calling + 有界 Conversation Memory，返回 `conversationId`、`executionId`、实际执行的 `toolCallCount` 和最终 `content`。
 
-Tool Calling 使模型能够请求 Java 工具；Agent Loop 使模型在看到一次工具结果后继续决定是否调用工具，以及调用哪个工具。Tool Calling 是 Agent 的基础能力之一，但不等于完整 Agent。v0.3 每个请求独立运行，没有 Memory、RAG、数据库、多 Agent 或对话历史。下一阶段 v0.4 才研究 Memory。
+Tool Calling 使模型能够请求 Java 工具；v0.3 Agent Loop 在一次请求内根据 Tool 结果继续行动。v0.4 让 `/api/agent` 跨请求恢复有限对话上下文。`/api/chat`、`/api/chat/stream` 和 `/api/intent` 仍是无状态接口。
 
 ```text
-User → POST /api/agent → RunAgentService → ChatClient → ToolCallingAdvisor → LLM
-                                                        ↑                  ↓
-                                                        └── Observation ← RunningTools
-                                                                            ↓
-                                                                  RunningDataService
-                                                                            ↓
-                                                                     activities.json
-                         no more tool calls → Final Answer
+Client conversationId → POST /api/agent → RunAgentService
+                                              ↓
+                            MessageChatMemoryAdvisor ⇄ MessageWindowChatMemory
+                                              ↓                  ↓
+                                         ChatClient     InMemoryChatMemoryRepository
+                                              ↓
+                                     ToolCallingAdvisor ⇄ LLM
+                                              ↓
+                              RunningTools → RunningDataService → activities.json
+                                              ↓
+                                          Final Answer
 ```
 
 比较两个时间段时，模型应分别调用 `getRunningSummary` 两次；需要个别训练时再调用 `getRecentRuns`。不提供 `compareRunningPeriods`，以便观察根据前一 Observation 作出的下一步决定。完整机制见 [Agent Loop](docs/agent-loop.md)；v0.2 的底层协议学习实验见 [Tool Calling Flow](docs/tool-calling-flow.md)。
+
+## Conversation Memory
+
+`AgentRequest` 是 `{ "conversationId": "run-session-1", "message": "..." }`。`conversationId` 可省略或设为 `null`，服务端会生成 UUID 并在响应中返回。客户端保存它，下一轮原样传回。显式 ID 最长 100 字符，只接受英文字母、数字、`-` 和 `_`；它是 Memory 命名空间，不是认证或授权。
+
+`MessageChatMemoryAdvisor` 只在 `/api/agent` 的调用中附加，按 `ChatMemory.CONVERSATION_ID` 从 `MessageWindowChatMemory` 恢复消息并保存本轮 User / 最终 Assistant 消息。ToolCallingAdvisor 在其内层完成本次多步工具循环；历史回答可帮助理解“那段时间”，当前问题需要的个人统计仍须重新调用 Running Tools。自动 Tool Calling 的中间 Tool Call / Tool Result 不会被当作完整 Agent transcript 存入 Memory。
+
+| 概念 | 含义 |
+| --- | --- |
+| Context Window | 当前一次模型请求真正发送的 Token，可能包含系统提示、Memory、当前问题和本次 Tool 结果 |
+| Chat Memory | 应用在模型外维护、按 conversationId 取回并重新注入的有界上下文 |
+| Chat History | 全部对话的长期完整记录；v0.4 不保存 |
+| RAG | 按当前查询从外部知识源检索相关内容；v0.4 不实现 |
+
+`conversationId` 跨多个请求；每次请求另有新的 `executionId`，只标识该次执行 trace。默认 `maxMessages=20`，通过 `AGENT_MEMORY_MAX_MESSAGES` 调整，允许 1–200。窗口超限会移除旧的完整对话回合；它并非永久归档。`InMemoryChatMemoryRepository` 在应用重启后丢失内容，多实例之间也不共享。完整机制、边界和实验见 [Conversation Memory](docs/memory.md)。
 
 ## 三个 Running Tools
 
@@ -43,6 +61,7 @@ User → POST /api/agent → RunAgentService → ChatClient → ToolCallingAdvis
 ```bash
 export DEEPSEEK_API_KEY="your-api-key"
 export RUNNING_DATA_PATH=/absolute/path/to/watson-running/src/static/activities.json
+export AGENT_MEMORY_MAX_MESSAGES=20
 ./gradlew bootRun
 ```
 
@@ -50,25 +69,25 @@ export RUNNING_DATA_PATH=/absolute/path/to/watson-running/src/static/activities.
 
 `spring.ai.tools.limits` 在 Spring AI 2.0.1 中绑定：每个 Tool 每轮最多 **4** 次、所有 Tool 合计最多 **8** 次，超限行为 `THROW`。可通过 `AGENT_MAX_CALLS_PER_TOOL` 和 `AGENT_MAX_TOTAL_TOOL_CALLS` 覆盖。Advisor 将超限转成 `toolCallLimitExceeded` finish reason；服务将它映射成安全的 `AGENT_TOOL_LIMIT` 错误。Tool call limits are safety boundaries, not business retry policies.
 
-`/api/agent` 默认请求级超时 **30s**，可用 `AGENT_TIMEOUT` 覆盖，例如 `45s`。这是应用层 deadline 与尽力取消；阻塞的 Provider HTTP 调用不保证立即中断。超时返回 `AGENT_TIMEOUT`。每次 Agent 请求生成 UUID，工具日志记录 `agentExecutionId`、`step`、工具名、状态和耗时；step 只是 Tool execution sequence number。Agent trace observes actions, not hidden model reasoning。日志不记录用户消息、完整 Prompt、密钥或轨迹。
+`/api/agent` 默认请求级超时 **30s**，可用 `AGENT_TIMEOUT` 覆盖，例如 `45s`。这是应用层 deadline 与尽力取消；阻塞的 Provider HTTP 调用不保证立即中断。超时返回 `AGENT_TIMEOUT`。每次 Agent 请求生成 UUID `executionId`，日志记录安全的 `conversationId`、消息数量、工具 step、状态和耗时；Provider 返回 Usage 时还记录 token 数。step 只是 Tool execution sequence number。Agent trace observes actions, not hidden model reasoning。日志不记录用户消息、完整 Prompt、Memory 全文、密钥或轨迹。
 
 ## API 示例
 
 ```bash
 curl -X POST http://localhost:8080/api/agent \
   -H 'Content-Type: application/json' \
-  -d '{"message":"比较我最近30天和之前30天的跑步情况，再结合最近5次跑步分析训练状态。"}'
+  -d '{"message":"分析我最近30天的跑步情况。"}'
 ```
 
 ```json
-{"executionId":"<uuid>","toolCallCount":3,"content":"..."}
+{"conversationId":"<uuid>","executionId":"<uuid>","toolCallCount":1,"content":"..."}
 ```
 
-实际 Tool 顺序由模型决定，示例次数不保证。通用问题如“什么是节奏跑？”无需 Tool。`/api/chat` 继续返回 `{"content":"..."}`；`/api/intent` 继续返回 `RunningIntent`。
+第二轮传 `{"conversationId":"<上次返回的 uuid>","message":"那跟之前30天比呢？"}`，第三轮继续传同一个 ID 问“最近几次跑步有什么变化？”。两轮的 `executionId` 各不相同。实际 Tool 顺序由模型决定，示例次数不保证。通用问题如“什么是节奏跑？”无需 Tool。`/api/chat` 继续返回 `{"content":"..."}`；`/api/intent` 继续返回 `RunningIntent`。
 
 ```bash
 ./gradlew test
 ./gradlew build
 ```
 
-自动测试使用本地合成数据与 stub 模型，不调用真实 DeepSeek。真实多轮效果需要在有 Key 和只读 Running Data 时手动观察 `executionId`、Tool 顺序、次数和最终回答。跨仓库边界见 [Watson Running Integration Boundary](docs/watson-running-integration.md)。
+自动测试使用本地合成数据与 stub 模型，不调用真实 DeepSeek。真实多轮语言理解效果需要在有 Key 和只读 Running Data 时手动观察。跨仓库边界见 [Watson Running Integration Boundary](docs/watson-running-integration.md)。

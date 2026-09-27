@@ -59,13 +59,25 @@ Client conversationId → POST /api/agent → RunAgentService
 技术基线：Java 21、Gradle Wrapper 9.7.1、Spring Boot 4.1.1、Spring AI 2.0.1、WebFlux / Reactor、Bean Validation 和 JUnit 5。
 
 ```bash
-export DEEPSEEK_API_KEY="your-api-key"
+export AI_GATEWAY_BASE_URL="https://api.deepseek.com"
+export AI_GATEWAY_API_KEY="your-api-key"
+export AI_GATEWAY_MODEL="deepseek-v4-pro"
 export RUNNING_DATA_PATH=/absolute/path/to/watson-running/src/static/activities.json
 export AGENT_MEMORY_MAX_MESSAGES=20
 ./gradlew bootRun
 ```
 
-`DEEPSEEK_MODEL` 默认为 `deepseek-v4-pro`，`DEEPSEEK_BASE_URL` 默认指向 DeepSeek。请使用被 Git 忽略的本地配置存放真实密钥与路径。数据文件只读，每次工具执行重新加载；文件不可用时不会捏造个人统计。
+服务端使用 Spring AI OpenAI Chat 客户端连接兼容的 Chat Completions 端点。切换提供方只需在启动前更改以下三项；不要将 API Key 放入前端或提交到仓库。
+
+| 提供方 | `AI_GATEWAY_BASE_URL` | `AI_GATEWAY_MODEL` | `AI_GATEWAY_API_KEY` |
+| --- | --- | --- | --- |
+| DeepSeek | `https://api.deepseek.com` | 账户可用的 DeepSeek Chat 模型，例如 `deepseek-v4-pro` | DeepSeek Key |
+| OpenRouter | `https://openrouter.ai/api/v1` | OpenRouter 模型 ID，例如 `deepseek/deepseek-chat` | OpenRouter Key |
+| 本地 Ollama | `http://localhost:11434/v1` | 已通过 `ollama pull` 下载、支持所需能力的模型名 | 非空占位值，例如 `ollama` |
+
+`AI_GATEWAY_BASE_URL` 是 API 根地址，不含 `/chat/completions`；OpenAI 客户端会添加该路径。DeepSeek 的根地址默认是 `https://api.deepseek.com`，模型默认 `deepseek-v4-pro`。若没有设置新的 `AI_GATEWAY_*` 变量，旧的 `DEEPSEEK_API_KEY`、`DEEPSEEK_BASE_URL`、`DEEPSEEK_MODEL` 以及被 Git 忽略的 `application-local.yml` 中 `spring.ai.deepseek.*` 值仍可作为回退。新配置优先；本地 profile 也可直接使用 `spring.ai.openai.api-key`、`spring.ai.openai.base-url`、`spring.ai.openai.chat.model`。可将 [application-local.yml.example](application-local.yml.example) 复制到 `src/main/resources/application-local.yml`，再选择其中一个提供方；真实密钥只放在被 Git 忽略的本地配置或环境变量中。
+
+Ollama 需要本地服务已启动且模型已下载；OpenAI 兼容端点通常忽略 API Key，但客户端仍要求非空值。三种后端的 Chat Completions 兼容程度会因模型和服务版本而异，尤其是 Tool Calling、Streaming 和 Structured Output；切换后应分别验证所需接口。数据文件只读，每次工具执行重新加载；文件不可用时不会捏造个人统计。
 
 `spring.ai.tools.limits` 在 Spring AI 2.0.1 中绑定：每个 Tool 每轮最多 **4** 次、所有 Tool 合计最多 **8** 次，超限行为 `THROW`。可通过 `AGENT_MAX_CALLS_PER_TOOL` 和 `AGENT_MAX_TOTAL_TOOL_CALLS` 覆盖。Advisor 将超限转成 `toolCallLimitExceeded` finish reason；服务将它映射成安全的 `AGENT_TOOL_LIMIT` 错误。Tool call limits are safety boundaries, not business retry policies.
 
@@ -90,4 +102,4 @@ curl -X POST http://localhost:8080/api/agent \
 ./gradlew build
 ```
 
-自动测试使用本地合成数据与 stub 模型，不调用真实 DeepSeek。真实多轮语言理解效果需要在有 Key 和只读 Running Data 时手动观察。跨仓库边界见 [Watson Running Integration Boundary](docs/watson-running-integration.md)。
+自动测试使用本地合成数据、stub 模型和本地假网关，不调用真实提供方。真实多轮语言理解效果需要在所选模型可用且只读 Running Data 已配置时手动观察。跨仓库边界见 [Watson Running Integration Boundary](docs/watson-running-integration.md)。

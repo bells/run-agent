@@ -48,7 +48,7 @@ Tool 描述说明它查询用户真实历史跑步统计，适合个人跑量、
 
 `RunAgentService` 记录 AI 请求开始与结束；`RunningTools` 记录工具被选择、合法日期参数、执行结果和耗时。数据读取失败会变成固定错误消息，模型必须说明无法获取，不能猜测。未配置的文件、空文件或损坏的 JSON 不能当成“零跑量”；有效 JSON 数组中没有匹配活动时才返回零值。日志和 Tool Result 都不包含活动明细、GPS 或 Polyline。
 
-`RunAgentServiceTest` 用 Stub ChatModel 模拟一次 Tool Call、Tool Result 和第二次模型回答；另一个测试覆盖 Streaming。它们证明本地 Spring AI 调用链和工具注册，不证明真实供应商会对每条自然语言问题选择正确工具。真实行为需配置 DeepSeek Key 与生成后的 `RUNNING_DATA_PATH` 后，使用 README 中的 curl 命令和安全日志观察。
+`RunAgentServiceTest` 用 Stub ChatModel 模拟一次 Tool Call、Tool Result 和第二次模型回答；另一个测试覆盖 Streaming。它们证明本地 Spring AI 调用链和工具注册，不证明真实模型会对每条自然语言问题选择正确工具。真实行为需按 README 配置所选兼容端点、模型和生成后的 `RUNNING_DATA_PATH`，再用 curl 命令和安全日志观察。
 
 ## 动手实验：自己串一次 Tool Calling
 
@@ -79,7 +79,7 @@ Final Answer
 
 实验最多允许三次模型请求和三次工具调用，以免示例意外无限循环。另两个测试展示“模型直接回答，无需工具”和“拒绝未注册工具”。脚本模型验证的是**协议与 Java 执行顺序**，不验证真实模型的工具选择能力。
 
-若要观察真实模型提出 Tool Call，可显式启用可选测试，并提供 DeepSeek Key（环境变量或被忽略的本地 profile）：
+若要观察真实模型提出 Tool Call，可显式启用可选测试，并提供所选兼容端点的配置（环境变量或被忽略的本地 profile）：
 
 ```bash
 export RUN_TOOL_LOOP_LIVE=1

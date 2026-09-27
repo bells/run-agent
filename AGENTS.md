@@ -103,7 +103,7 @@ Controller -> RunAgentService -> ChatClient -> LLM
 
 ## 配置与安全
 
-- 当前唯一模型供应商是 DeepSeek，运行时配置使用 `DEEPSEEK_API_KEY`、`DEEPSEEK_MODEL` 和 `DEEPSEEK_BASE_URL`。
+- 模型通过 Spring AI OpenAI Chat 客户端连接 OpenAI 兼容端点；`AI_GATEWAY_BASE_URL`、`AI_GATEWAY_API_KEY`、`AI_GATEWAY_MODEL` 在启动时选择 DeepSeek、OpenRouter 或本地 Ollama。旧 `DEEPSEEK_*` 和本地 profile 中 `spring.ai.deepseek.*` 仅作为过渡回退。
 - API Key、Authorization Header、平台密码、refresh token、真实个人数据不得出现在源码、测试、日志、README、提交记录或命令输出中。
 - `application-local.yml`、`.env*` 等本地配置必须保持忽略；示例文件只能使用占位符或环境变量引用。
 - 日志可以记录请求类型、长度、耗时、状态和非敏感标识，不记录完整用户消息、模型密钥或原始轨迹。
@@ -112,7 +112,7 @@ Controller -> RunAgentService -> ChatClient -> LLM
 
 - 修改业务代码至少运行 `./gradlew test`。
 - 修改依赖、配置、启动流程或打包行为运行 `./gradlew build`。
-- Controller 测试覆盖校验、状态码和安全错误体；Service 测试使用 stub/mock ChatModel，不调用真实 DeepSeek API。
+- Controller 测试覆盖校验、状态码和安全错误体；Service 测试使用 stub/mock ChatModel，不调用真实模型 API。
 - Streaming 修改需测试正常片段、错误事件和取消/结束行为；自动测试无法证明真实供应商流式语义时要明确说明。
 - 只修改 Markdown 等文档时至少运行 `git diff --check`。
 - 不得用“Context 能启动”代替真实的 API、SSE 或供应商兼容性验证结论。

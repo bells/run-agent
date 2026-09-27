@@ -7,7 +7,7 @@ import cn.watsonzhu.runagent.config.AgentProperties;
 import static org.assertj.core.api.Assertions.assertThat;
 import org.springframework.boot.test.context.SpringBootTest;
 
-@SpringBootTest(properties = "spring.ai.deepseek.api-key=test-key")
+@SpringBootTest(properties = "spring.ai.openai.api-key=test-key")
 class RunAgentApplicationTests {
 
     @Autowired private ToolCallingProperties toolCallingProperties;

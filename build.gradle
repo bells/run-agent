@@ -23,7 +23,7 @@ ext {
 
 dependencyManagement {
     imports {
-        // 统一 Spring AI 模块版本，避免 DeepSeek Starter 与 ChatClient 使用不同的 API 版本。
+        // 统一 Spring AI 模块版本，避免模型 Starter 与 ChatClient 使用不同的 API 版本。
         mavenBom "org.springframework.ai:spring-ai-bom:${springAiVersion}"
     }
 }
@@ -31,7 +31,7 @@ dependencyManagement {
 dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-webflux'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
-    implementation 'org.springframework.ai:spring-ai-starter-model-deepseek'
+    implementation 'org.springframework.ai:spring-ai-starter-model-openai'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'io.projectreactor:reactor-test'

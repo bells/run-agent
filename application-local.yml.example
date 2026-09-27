@@ -1,10 +1,26 @@
+# 复制到 src/main/resources/application-local.yml，并启用 local profile。
+# 以下默认使用 DeepSeek。切换提供方时，将 api-key、base-url、chat.model 三项
+# 一起替换为下面对应提供方的示例；base-url 不包含 /chat/completions。
 spring:
   ai:
-    deepseek:
+    openai:
+      # DeepSeek
       api-key: ${DEEPSEEK_API_KEY}
-      base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}
+      base-url: https://api.deepseek.com
       chat:
         model: ${DEEPSEEK_MODEL:deepseek-v4-pro}
+
+      # OpenRouter（替换上面的三项；模型 ID 以 OpenRouter 当前目录为准）
+      # api-key: ${OPENROUTER_API_KEY}
+      # base-url: https://openrouter.ai/api/v1
+      # chat:
+      #   model: ${OPENROUTER_MODEL:deepseek/deepseek-chat}
+
+      # 本地 Ollama（替换上面的三项；先启动服务并下载模型）
+      # api-key: ollama
+      # base-url: http://localhost:11434/v1
+      # chat:
+      #   model: ${OLLAMA_MODEL:your-pulled-model}
 
 run-agent:
   running-data:

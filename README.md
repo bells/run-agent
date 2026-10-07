@@ -1,4 +1,4 @@
-# RunAgent v0.4
+# RunAgent v0.5
 
 RunAgent 是 Watson 的个人跑步 AI 后端与 Java / Spring AI 学习项目。它与 [Watson Running](https://github.com/bells/watson-running) 独立构建和部署。
 
@@ -7,6 +7,8 @@ RunAgent 是 Watson 的个人跑步 AI 后端与 Java / Spring AI 学习项目�
 - `POST /api/chat`：普通 Chat 和简单 Tool-aware Chat。
 - `GET /api/chat/stream`：UTF-8 SSE Chat，保留 `token` 与安全 `error` 事件。
 - `POST /api/intent`：Structured Output，不注册 Running Tools。
+- `POST /api/knowledge/ask`：无状态的跑步书籍 RAG 问答；默认关闭，使用前需启用本地知识库。
+- `POST /api/knowledge/search`：仅 local profile 提供检索调试，返回来源、分数及最多 200 字的 preview。
 - `POST /api/agent`：多步 Tool Calling + 有界 Conversation Memory，返回 `conversationId`、`executionId`、实际执行的 `toolCallCount` 和最终 `content`。
 
 Tool Calling 使模型能够请求 Java 工具；v0.3 Agent Loop 在一次请求内根据 Tool 结果继续行动。v0.4 让 `/api/agent` 跨请求恢复有限对话上下文。`/api/chat`、`/api/chat/stream` 和 `/api/intent` 仍是无状态接口。
@@ -38,7 +40,7 @@ Client conversationId → POST /api/agent → RunAgentService
 | Context Window | 当前一次模型请求真正发送的 Token，可能包含系统提示、Memory、当前问题和本次 Tool 结果 |
 | Chat Memory | 应用在模型外维护、按 conversationId 取回并重新注入的有界上下文 |
 | Chat History | 全部对话的长期完整记录；v0.4 不保存 |
-| RAG | 按当前查询从外部知识源检索相关内容；v0.4 不实现 |
+| RAG | 按当前查询从外部知识源检索相关内容；v0.5 使用独立 Knowledge API |
 
 `conversationId` 跨多个请求；每次请求另有新的 `executionId`，只标识该次执行 trace。默认 `maxMessages=20`，通过 `AGENT_MEMORY_MAX_MESSAGES` 调整，允许 1–200。窗口超限会移除旧的完整对话回合；它并非永久归档。`InMemoryChatMemoryRepository` 在应用重启后丢失内容，多实例之间也不共享。完整机制、边界和实验见 [Conversation Memory](docs/memory.md)。
 
@@ -103,3 +105,85 @@ curl -X POST http://localhost:8080/api/agent \
 ```
 
 自动测试使用本地合成数据、stub 模型和本地假网关，不调用真实提供方。真实多轮语言理解效果需要在所选模型可用且只读 Running Data 已配置时手动观察。跨仓库边界见 [Watson Running Integration Boundary](docs/watson-running-integration.md)。
+
+## RAG Running Knowledge Base
+
+v0.5 增加 Document → Chunk → Embedding → SimpleVectorStore → Retrieval → QuestionAnswerAdvisor → Answer 闭环。默认 `RAG_ENABLED=false`；测试和构建不需要 Ollama 或电子书。
+
+```text
+                           RunAgent
+             ┌────────────────┼──────────────────┐
+             ▼                ▼                  ▼
+           Memory        Running Tools           RAG
+             │                │                  │
+      Conversation      activities.json      SimpleVectorStore
+         Context          Java 精确聚合           │
+                                           四本本地跑步书籍
+```
+
+| 能力 | 数据 | 示例 | 接口 |
+| --- | --- | --- | --- |
+| Memory | 有界 conversation context | “那跟上个月比呢？” | `/api/agent` |
+| Tool | 真实结构化跑步数据 | “今年跑了多少公里？” | Chat / Agent 的 Running Tools |
+| RAG | 外部非结构化书籍 | “T 配速训练目的是什么？” | `/api/knowledge/ask` |
+
+Structured Data ≠ RAG Data。`activities.json` 的统计仍由 Java 确定性计算；Conversation Memory 不做 Embedding；RAG Advisor 不全局加入 ChatClient 或 `/api/agent`。
+
+本地目录可指向一本书、一个文件，或包含四个书籍子目录的集合。每个目录按 **EPUB → TXT → MD** 选择一个版本，同格式按文件名排序；免责声明和隐藏文件不索引。本机四本书都使用 EPUB，因此只增加 Tika Reader，未添加 PDF / MOBI / AZW3 Reader。详见 [RAG 学习与实验](docs/rag.md)。
+
+```bash
+ollama serve  # 已启动时无需重复运行
+ollama list
+ollama pull bge-m3  # 首次准备；应用 pull-model-strategy=never
+export RAG_ENABLED=true
+export RAG_SOURCE_PATH="/absolute/path/to/run-book"
+export RAG_VECTOR_STORE_PATH=".run-agent/rag/vector-store.json"
+export RAG_OLLAMA_BASE_URL="http://localhost:11434"
+export RAG_EMBEDDING_MODEL="bge-m3"
+export RAG_REINDEX=true
+./gradlew bootRun
+```
+
+Chat 仍独立使用 `AI_GATEWAY_BASE_URL`、`AI_GATEWAY_API_KEY`、`AI_GATEWAY_MODEL`。可使用 DeepSeek / OpenRouter，也可全部留在本机：
+
+```bash
+export AI_GATEWAY_BASE_URL="http://localhost:11434/v1"
+export AI_GATEWAY_API_KEY="ollama"
+export AI_GATEWAY_MODEL="qwen3:8b"
+```
+
+首次观察 `EXTRACTED`、`CHUNKED`、`VALIDATED`、`INDEXED`。停止后设 `RAG_REINDEX=false` 重启，应看到 `LOADED`，不会重新 Embedding 全书。索引或模型不可用时只停用 Knowledge 模块，接口返回安全 `503 KNOWLEDGE_UNAVAILABLE`，已有能力不受影响。加载会检查模型/端点/切块参数指纹及索引 checksum。**Changing the embedding model requires rebuilding the vector index.** 修改书籍集合或正文也需主动 Reindex。
+
+```bash
+curl -X POST http://localhost:8080/api/knowledge/ask \
+  -H 'Content-Type: application/json' \
+  -d '{"question":"丹尼尔斯训练法中T配速训练的主要目的是什么？"}'
+```
+
+响应为 `{ "queryId": "<uuid>", "content": "..." }`。无召回结果时直接返回证据不足，不调用 Chat Model；召回内容不支持问题时由 Prompt 要求拒绝归因。语义分数并不能保证正确，仍须人工核对。
+
+检索 preview 只在 `--spring.profiles.active=local` 启用：
+
+```bash
+curl -X POST http://localhost:8080/api/knowledge/search \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"阈值配速训练有什么作用？"}'
+```
+
+当前没有认证，本地个人实验请绑定 `--server.address=127.0.0.1`。`local` 是配置环境，不是认证。书籍、提取正文、完整 Chunk、向量 JSON 和 manifest 全部留在 `.run-agent/` 等被忽略目录；自定义索引路径也必须忽略。不要将书籍放到 Git。日志只有来源标题、数量、queryId、rank、score 和耗时，不输出问题、正文或向量。若 Chat 指向远程提供方，召回片段会作为 Prompt Context 发给该提供方；本地 Qwen 配置可让本实验的书籍内容全部留在本机。
+
+`SimpleVectorStore` 使用内存及余弦相似度、本地 JSON 持久化，**Not for production.** 默认 chunkSize=800、TopK=5、threshold=0.5 是学习起点，尚不代表最优。`RAG_TIMEOUT=180s` 是请求 deadline 和尽力取消，阻塞 Provider HTTP 不保证立即中断。当前无显式 Chunk Overlap、Hybrid Search、Reranker、RAG Tool 或 Agentic RAG。
+
+## Roadmap
+
+| 版本 | 学习阶段 |
+| --- | --- |
+| v0.1 | LLM Basics |
+| v0.2 | Tool Calling |
+| v0.3 | Agent Loop |
+| v0.4 | Memory |
+| v0.5 | RAG（当前） |
+| v0.6 | MCP |
+| v0.7 | Workflow / LangGraph |
+| v0.8 | Evaluation / Observability |
+| v0.9 | Multi-Agent |

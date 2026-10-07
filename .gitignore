@@ -21,3 +21,6 @@ src/main/resources/application-local.yml
 *.log
 
 .codegraph/
+
+# Private knowledge sources, extracted text, chunks and vector stores
+.run-agent/

@@ -21,6 +21,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SpringBootTest(properties = {
         "AI_GATEWAY_API_KEY=test-key",
         "AI_GATEWAY_MODEL=gateway-test-model",
+        "run-agent.rag.enabled=false",
         "spring.ai.openai.max-retries=0"
 })
 class OpenAiGatewayTest {

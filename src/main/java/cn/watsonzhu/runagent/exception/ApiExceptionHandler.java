@@ -59,6 +59,12 @@ public class ApiExceptionHandler {
         return response(HttpStatus.BAD_GATEWAY, "AGENT_TOOL_LIMIT", "The agent stopped after reaching its tool limit", exchange);
     }
 
+    @ExceptionHandler(KnowledgeBaseUnavailableException.class)
+    public ResponseEntity<ApiError> handleKnowledgeUnavailable(KnowledgeBaseUnavailableException exception,
+                                                              ServerWebExchange exchange) {
+        return response(HttpStatus.SERVICE_UNAVAILABLE, "KNOWLEDGE_UNAVAILABLE", exception.getMessage(), exchange);
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiError> handleUnexpected(Exception exception, ServerWebExchange exchange) {
         log.error("Unexpected request failure", exception);

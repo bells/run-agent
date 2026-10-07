@@ -2,6 +2,15 @@ spring:
   application:
     name: run-agent
   ai:
+    model:
+      chat: openai
+      embedding: ollama
+    ollama:
+      base-url: ${RAG_OLLAMA_BASE_URL:http://localhost:11434}
+      init:
+        pull-model-strategy: never
+      embedding:
+        model: ${RAG_EMBEDDING_MODEL:bge-m3}
     tools:
       limits:
         max-calls-per-tool-default: ${AGENT_MAX_CALLS_PER_TOOL:4}
@@ -20,6 +29,18 @@ server:
     include-stacktrace: never
 
 run-agent:
+  rag:
+    enabled: ${RAG_ENABLED:false}
+    source-path: ${RAG_SOURCE_PATH:}
+    vector-store-path: ${RAG_VECTOR_STORE_PATH:.run-agent/rag/vector-store.json}
+    reindex: ${RAG_REINDEX:false}
+    chunk-size: ${RAG_CHUNK_SIZE:800}
+    min-chunk-size-chars: ${RAG_MIN_CHUNK_SIZE_CHARS:350}
+    min-chunk-length-to-embed: ${RAG_MIN_CHUNK_LENGTH_TO_EMBED:10}
+    max-num-chunks: ${RAG_MAX_NUM_CHUNKS:5000}
+    top-k: ${RAG_TOP_K:5}
+    similarity-threshold: ${RAG_SIMILARITY_THRESHOLD:0.5}
+    timeout: ${RAG_TIMEOUT:180s}
   agent:
     timeout: ${AGENT_TIMEOUT:30s}
   memory:
@@ -31,3 +52,7 @@ run-agent:
 logging:
   level:
     cn.watsonzhu.runagent: INFO
+    # SimpleVectorStore's default logs include file paths; provider errors may include source data.
+    org.springframework.ai.vectorstore.SimpleVectorStore: OFF
+    org.springframework.ai.ollama: OFF
+    org.apache.tika: OFF

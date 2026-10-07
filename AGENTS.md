@@ -22,7 +22,7 @@ Java 21 / Spring Boot / Spring AI
 
 ## 当前阶段
 
-当前版本是 v0.4，已经实现：
+当前版本是 v0.5，已经实现：
 
 - `POST /api/chat`：普通 Chat。
 - `GET /api/chat/stream`：UTF-8 SSE Streaming Chat。
@@ -31,7 +31,9 @@ Java 21 / Spring Boot / Spring AI
 - `POST /api/agent`：基于 Spring AI ToolCallingAdvisor 的多步 Tool Calling；新增 `getRecentRuns`、`getPersonalBest`、调用限制、请求超时和执行 trace。
 - v0.4 为 `/api/agent` 加入基于 `conversationId` 的短期有界 Conversation Memory；其余 API 仍无状态。详情见 `docs/memory.md`。
 
-v0.4 不实现自定义 Agent Loop、长期 Memory、数据库、Embedding、RAG、MCP、Workflow、LangGraph、Multi-Agent、复杂认证或完整 Observability。后续能力必须按版本目标逐步加入。
+- v0.5 新增独立、无状态的 `/api/knowledge/ask`，使用本地书籍、Tika / TextReader、TokenTextSplitter、Ollama Embedding、SimpleVectorStore 和 QuestionAnswerAdvisor；仅 local profile 提供 `/api/knowledge/search`。默认关闭，详情见 `docs/rag.md`。
+
+v0.5 不实现自定义 Agent Loop、长期 Memory、数据库、Hybrid Search、Reranker、RAG Tool、Agentic RAG、MCP、Workflow、LangGraph、Multi-Agent、复杂认证或完整 Observability。后续能力必须按版本目标逐步加入。
 
 ## 已验证技术基线
 
@@ -101,6 +103,14 @@ Controller -> RunAgentService -> ChatClient -> LLM
 - 跑步轨迹包含精确位置。原始轨迹、起终点、平台凭据和仓库 Secrets 默认不得发送给浏览器或 LLM。
 - 跨仓库任务先检查两个工作树，并分别报告修改和验证结果；不得顺手改动历史仓库 `running_page`。
 
+## RAG 边界
+
+- RAG 只用于外部非结构化知识，禁止对 `activities.json` 或 Conversation Memory 做 Embedding。
+- Chat 使用 OpenAI-compatible gateway；Embedding 使用独立 `RAG_OLLAMA_BASE_URL` / `RAG_EMBEDDING_MODEL`，禁止自动下载模型。
+- 每个书籍目录只选一个格式，保留安全来源 metadata。书籍、正文、完整 Chunk 和索引 JSON / manifest 不进入 Git。
+- 修改 Embedding 模型、书籍内容或集合后必须 Reindex；加载失败不能伪装 Ready 或回退为模型常识。
+- QuestionAnswerAdvisor 只用于 Knowledge QA，不全局加到 Agent。自动测试用自创知识和 fake 模型，不访问真实书籍或 Ollama。
+
 ## 配置与安全
 
 - 模型通过 Spring AI OpenAI Chat 客户端连接 OpenAI 兼容端点；`AI_GATEWAY_BASE_URL`、`AI_GATEWAY_API_KEY`、`AI_GATEWAY_MODEL` 在启动时选择 DeepSeek、OpenRouter 或本地 Ollama。旧 `DEEPSEEK_*` 和本地 profile 中 `spring.ai.deepseek.*` 仅作为过渡回退。
@@ -129,11 +139,12 @@ Controller -> RunAgentService -> ChatClient -> LLM
 
 ```text
 v0.3 Agent Loop
-v0.4 Memory (current)
-v0.5 RAG
+v0.4 Memory
+v0.5 RAG (current)
 v0.6 MCP
-v0.7 Evaluation / Observability
-v0.8 Workflow / Multi-Agent
+v0.7 Workflow / LangGraph
+v0.8 Evaluation / Observability
+v0.9 Multi-Agent
 ```
 
 每一阶段都应先确认学习目标和最小可验证闭环，再增加依赖与抽象。

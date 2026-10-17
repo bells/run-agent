@@ -1,4 +1,4 @@
-# RunAgent v0.5
+# RunAgent v0.6
 
 RunAgent 是 Watson 的个人跑步 AI 后端与 Java / Spring AI 学习项目。它与 [Watson Running](https://github.com/bells/watson-running) 独立构建和部署。
 
@@ -22,12 +22,56 @@ Client conversationId → POST /api/agent → RunAgentService
                                               ↓
                                      ToolCallingAdvisor ⇄ LLM
                                               ↓
-                              RunningTools → RunningDataService → activities.json
+                         MCP ToolCallbacks → MCP Client → Running / Weather MCP
+                         local fallback: RunningTools → RunningDataService
                                               ↓
                                           Final Answer
 ```
 
 比较两个时间段时，模型应分别调用 `getRunningSummary` 两次；需要个别训练时再调用 `getRecentRuns`。不提供 `compareRunningPeriods`，以便观察根据前一 Observation 作出的下一步决定。完整机制见 [Agent Loop](docs/agent-loop.md)；v0.2 的底层协议学习实验见 [Tool Calling Flow](docs/tool-calling-flow.md)。
+
+## MCP：v0.6
+
+RunAgent 是 MCP Host，使用 `spring-ai-starter-mcp-client-webflux` 消费两个独立 Server：Running MCP 提供真实个人跑步数据，外部 [Open-Meteo MCP](https://github.com/cyanheads/open-meteo-mcp-server) 提供天气/空气质量。二者均使用 Streamable HTTP。
+
+```text
+                     RunAgent / MCP Host
+             ┌───────────────┼──────────────┐
+           Memory       独立 RAG API     MCP Client
+             │               │          ┌──┴─────────┐
+        Conversation       Four Books  Running MCP  Weather MCP
+                                          │            │
+                                    activities.json Weather APIs
+```
+
+Tool Calling 决定“调用什么、参数是什么”；MCP 统一能力发现与调用。ToolCallingAdvisor 和 Memory 继续使用；RAG 仍是独立 Knowledge API，没有加入 Agent Tools。
+默认 `RUNNING_TOOL_PROVIDER=local`、MCP Client 关闭，测试、build和普通启动均无需MCP服务。目标模式为`mcp`，Host不创建本地RunningTools/RunningDataService，不需要`RUNNING_DATA_PATH`。
+
+终端1，独立应用（当前为本地 standalone project）：
+
+```bash
+cd ../running-mcp-server
+export RUNNING_DATA_PATH="/absolute/path/to/generated/activities.json"
+./gradlew bootRun
+```
+
+默认 `127.0.0.1:8090/mcp`、SYNC；无认证时仅允许回环地址，不能公开发布。
+
+终端2，保留现有模型网关配置：
+
+```bash
+cd ../run-agent
+export RUNNING_TOOL_PROVIDER=mcp
+export RUNNING_MCP_URL="http://127.0.0.1:8090"
+./gradlew bootRun --args='--spring.profiles.active=local,mcp --server.address=127.0.0.1'
+```
+
+启用Weather时，将`WEATHER_MCP_URL`设为上游README当前列出的完整public hosted Streamable HTTP URL（包含`/mcp`），并使用`local,mcp,weather-mcp`。URL缺失明确启动失败；未启用profile不会连接公共服务。也可按上游README自托管并将同一变量指向localhost。
+
+单一`McpToolFilter`只放行3个Running Tools和3个Weather Tools（search_locations、forecast、air_quality），未知连接/Server/工具默认拒绝。发现Schema不等于全部暴露给模型。
+MCP timeout=10s，Agent=30s，调用上限仍4/8。逐连接启动发现失败互不拖累；启动时不可用的服务恢复后需重启Host重新发现。调用失败返回安全证据缺失信息；不会用模型常识编造天气或个人跑量。
+Trace只记录executionId、step、tool、source=mcp、status和latency；`ToolContextToMcpMetaConverter.noOp()`与空委托上下文阻止Trace/Memory跨MCP外发。
+天气地点来自用户明确提到的位置，不能由历史GPS推断；天气不是医疗建议或路线安全依据。公共Server为社区学习依赖，无生产SLA。完整概念、配置、过滤、错误、Transport和安全边界见 [MCP手册](docs/mcp.md)，真实验收见 [v0.6验证](docs/v0.6-verification.md)。
 
 ## Conversation Memory
 
@@ -129,6 +173,8 @@ v0.5 增加 Document → Chunk → Embedding → SimpleVectorStore → Retrieval
 
 Structured Data ≠ RAG Data。`activities.json` 的统计仍由 Java 确定性计算；Conversation Memory 不做 Embedding；RAG Advisor 不全局加入 ChatClient 或 `/api/agent`。
 
+当前四本书是《丹尼尔斯经典跑步训练法》《马拉松终极训练指南（原书第4版）》《骨骼跑步法》《跑步圣经（第2版）》。`RAG_SOURCE_PATH`可指向本机run-book集合目录；生产配置不硬编码本机绝对路径。书籍不进入Git。
+
 本地目录可指向一本书、一个文件，或包含四个书籍子目录的集合。每个目录按 **EPUB → TXT → MD** 选择一个版本，同格式按文件名排序；免责声明和隐藏文件不索引。本机四本书都使用 EPUB，因此只增加 Tika Reader，未添加 PDF / MOBI / AZW3 Reader。详见 [RAG 学习与实验](docs/rag.md)。
 
 ```bash
@@ -182,8 +228,8 @@ curl -X POST http://localhost:8080/api/knowledge/search \
 | v0.2 | Tool Calling |
 | v0.3 | Agent Loop |
 | v0.4 | Memory |
-| v0.5 | RAG（当前） |
-| v0.6 | MCP |
+| v0.5 | RAG |
+| v0.6 | MCP（当前） |
 | v0.7 | Workflow / LangGraph |
 | v0.8 | Evaluation / Observability |
 | v0.9 | Multi-Agent |

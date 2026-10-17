@@ -22,7 +22,7 @@ Java 21 / Spring Boot / Spring AI
 
 ## 当前阶段
 
-当前版本是 v0.5，已经实现：
+当前版本是 v0.6，已经实现：
 
 - `POST /api/chat`：普通 Chat。
 - `GET /api/chat/stream`：UTF-8 SSE Streaming Chat。
@@ -33,7 +33,9 @@ Java 21 / Spring Boot / Spring AI
 
 - v0.5 新增独立、无状态的 `/api/knowledge/ask`，使用本地书籍、Tika / TextReader、TokenTextSplitter、Ollama Embedding、SimpleVectorStore 和 QuestionAnswerAdvisor；仅 local profile 提供 `/api/knowledge/search`。默认关闭，详情见 `docs/rag.md`。
 
-v0.5 不实现自定义 Agent Loop、长期 Memory、数据库、Hybrid Search、Reranker、RAG Tool、Agentic RAG、MCP、Workflow、LangGraph、Multi-Agent、复杂认证或完整 Observability。后续能力必须按版本目标逐步加入。
+- v0.6 新增默认关闭的 Spring AI MCP Client、独立同级 Running MCP Server，以及可选第三方 Weather MCP；Streamable HTTP、3+3工具白名单、故障隔离和本地Trace，详见 `docs/mcp.md`。默认provider=local；目标provider=mcp不创建本地RunningTools/RunningDataService，数据路径归Server。
+
+v0.6 不实现自定义 Agent Loop、长期 Memory、数据库、Hybrid Search、Reranker、RAG Tool、Agentic RAG、Workflow、LangGraph、Multi-Agent、复杂认证或完整 Observability。后续能力必须按版本目标逐步加入。
 
 ## 已验证技术基线
 
@@ -111,6 +113,16 @@ Controller -> RunAgentService -> ChatClient -> LLM
 - 修改 Embedding 模型、书籍内容或集合后必须 Reindex；加载失败不能伪装 Ready 或回退为模型常识。
 - QuestionAnswerAdvisor 只用于 Knowledge QA，不全局加到 Agent。自动测试用自创知识和 fake 模型，不访问真实书籍或 Ollama。
 
+## MCP 边界
+
+- MCP Client 默认关闭；`mcp` profile 配置Running，`weather-mcp`显式配置完整WEATHER_MCP_URL。不要硬编码公共端点。
+- 使用官方2.0.1 Starter/Provider，单一McpToolFilter按配置连接和服务身份白名单，未知默认拒绝；不要手写JSON-RPC或每请求重新发现。
+- provider=mcp时不同时注册local Running Tools；不要把RAG做成MCP或Agent Tool。
+- Trace保留Host本地，noOp metadata converter加空委托ToolContext；不记录原始请求/结果。SDK错误日志可能含payload，保持关闭。
+- Running Server无认证时只能回环绑定并验证Origin，不得公开代理。Weather不能接收历史GPS、路径、Memory或网关密钥。
+- 启动时逐连接隔离发现；当前快照需重启恢复，不实现动态Server管理。保留每工具4次/总8次、MCP10s/Agent30s。
+- 自动测试不访问公共MCP、真实模型或私有数据；真实验收需单独说明结果及网络限制。
+
 ## 配置与安全
 
 - 模型通过 Spring AI OpenAI Chat 客户端连接 OpenAI 兼容端点；`AI_GATEWAY_BASE_URL`、`AI_GATEWAY_API_KEY`、`AI_GATEWAY_MODEL` 在启动时选择 DeepSeek、OpenRouter 或本地 Ollama。旧 `DEEPSEEK_*` 和本地 profile 中 `spring.ai.deepseek.*` 仅作为过渡回退。
@@ -140,8 +152,8 @@ Controller -> RunAgentService -> ChatClient -> LLM
 ```text
 v0.3 Agent Loop
 v0.4 Memory
-v0.5 RAG (current)
-v0.6 MCP
+v0.5 RAG
+v0.6 MCP (current)
 v0.7 Workflow / LangGraph
 v0.8 Evaluation / Observability
 v0.9 Multi-Agent

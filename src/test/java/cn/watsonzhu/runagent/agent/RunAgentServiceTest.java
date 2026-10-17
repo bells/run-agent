@@ -117,7 +117,7 @@ class RunAgentServiceTest {
         var builder = ChatClient.builder(model, ObservationRegistry.NOOP, null, null,
                 ToolCallingAdvisor.builder().toolCallingManager(manager));
         var prompts = new PromptCatalog(resource("chat"), resource("intent"));
-        var service = new RunAgentService(builder, prompts, new RunningTools(data), memory());
+        var service = new RunAgentService(builder, prompts, () -> org.springframework.ai.support.ToolCallbacks.from(new RunningTools(data)), memory());
         assertThatThrownBy(() -> service.agent("limit", "keep checking"))
                 .isInstanceOf(AgentLimitException.class);
         assertThat(requests.get()).isEqualTo(3);
@@ -162,7 +162,7 @@ class RunAgentServiceTest {
         };
         ChatMemory memory = memory();
         PromptCatalog prompts = new PromptCatalog(resource("Chat"), resource("Intent"));
-        RunAgentService service = new RunAgentService(ChatClient.builder(model), prompts, new RunningTools(data), memory);
+        RunAgentService service = new RunAgentService(ChatClient.builder(model), prompts, () -> org.springframework.ai.support.ToolCallbacks.from(new RunningTools(data)), memory);
         var first = service.agent("A", "first period");
         var second = service.agent("A", "follow up");
         var other = service.agent("B", "separate");
@@ -381,7 +381,7 @@ class RunAgentServiceTest {
                 resource("You are RunAgent."),
                 resource("Classify the running intent. Today is {{CURRENT_DATE}}."));
         return new RunAgentService(ChatClient.builder(chatModel), prompts,
-                new RunningTools(data), memory());
+                () -> org.springframework.ai.support.ToolCallbacks.from(new RunningTools(data)), memory());
     }
 
     private static ChatMemory memory() {

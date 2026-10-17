@@ -20,9 +20,11 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 @Component
+@ConditionalOnProperty(name = "run-agent.running-tools.provider", havingValue = "local", matchIfMissing = true)
 public class RunningTools {
     private static final Logger log = LoggerFactory.getLogger(RunningTools.class);
     private static final long MAX_QUERY_DAYS = 366;

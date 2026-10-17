@@ -2,6 +2,12 @@ spring:
   application:
     name: run-agent
   ai:
+    mcp:
+      client:
+        enabled: false
+        initialized: false
+        toolcallback:
+          enabled: false
     model:
       chat: openai
       embedding: ollama
@@ -29,6 +35,8 @@ server:
     include-stacktrace: never
 
 run-agent:
+  running-tools:
+    provider: ${RUNNING_TOOL_PROVIDER:local}
   rag:
     enabled: ${RAG_ENABLED:false}
     source-path: ${RAG_SOURCE_PATH:}
@@ -56,3 +64,6 @@ logging:
     org.springframework.ai.vectorstore.SimpleVectorStore: OFF
     org.springframework.ai.ollama: OFF
     org.apache.tika: OFF
+    # Official MCP adapter errors can contain full remote payloads.
+    org.springframework.ai.mcp: OFF
+    io.modelcontextprotocol: OFF

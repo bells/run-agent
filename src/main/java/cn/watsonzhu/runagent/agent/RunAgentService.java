@@ -10,7 +10,8 @@ import cn.watsonzhu.runagent.exception.StructuredOutputException;
 import cn.watsonzhu.runagent.model.RunningIntent;
 import cn.watsonzhu.runagent.model.AgentResponse;
 import cn.watsonzhu.runagent.prompt.PromptCatalog;
-import cn.watsonzhu.runagent.tool.RunningTools;
+import org.springframework.ai.tool.ToolCallbackProvider;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
@@ -30,15 +31,16 @@ public class RunAgentService {
 
     private final ChatClient chatClient;
     private final PromptCatalog prompts;
-    private final RunningTools runningTools;
+    private final ToolCallbackProvider tools;
     private final ChatMemory chatMemory;
     private final MessageChatMemoryAdvisor memoryAdvisor;
 
-    public RunAgentService(ChatClient.Builder chatClientBuilder, PromptCatalog prompts, RunningTools runningTools,
+    public RunAgentService(ChatClient.Builder chatClientBuilder, PromptCatalog prompts,
+                           @Qualifier("agentTools") ToolCallbackProvider tools,
                            ChatMemory chatMemory) {
         this.chatClient = chatClientBuilder.build();
         this.prompts = prompts;
-        this.runningTools = runningTools;
+        this.tools = tools;
         this.chatMemory = chatMemory;
         this.memoryAdvisor = MessageChatMemoryAdvisor.builder(chatMemory).build();
     }
@@ -52,7 +54,7 @@ public class RunAgentService {
             String content = chatClient.prompt()
                     .system(prompts.chatSystemPrompt())
                     .user(message)
-                    .tools(runningTools)
+                    .tools(tools)
                     .toolContext(Map.of("requestType", "chat"))
                     .call()
                     .content();
@@ -74,11 +76,13 @@ public class RunAgentService {
                     conversationId, trace.executionId(), memoryMessagesBefore);
             // Agent 需要完整响应的 finishReason，以识别框架转换后的 Tool 超限结果；content() 会丢掉该元数据。
             ChatResponse response = chatClient.prompt()
-                    .system(prompts.agentSystemPrompt())
+                    .system(prompts.agentSystemPrompt() + "\nAvailable tools for this session: "
+                            + java.util.Arrays.stream(tools.getToolCallbacks()).map(t -> t.getToolDefinition().name()).toList()
+                            + ". If the required tool is absent, clearly state that the data is unavailable.")
                     .user(message)
                     .advisors(memoryAdvisor)
                     .advisors(advisors -> advisors.param(ChatMemory.CONVERSATION_ID, conversationId))
-                    .tools(runningTools)
+                    .tools(tools)
                     // 同一请求的 Tool 调用共享 trace，计数与 executionId 不依赖线程局部或全局状态。
                     .toolContext(Map.of(AgentExecutionTrace.CONTEXT_KEY, trace))
                     .call()
@@ -125,7 +129,7 @@ public class RunAgentService {
                         .system(prompts.chatSystemPrompt())
                         .user(message)
                         // Streaming 与普通 Chat 暴露同一个 Tool，结果仍由 Spring AI 交回模型生成最终文本。
-                        .tools(runningTools)
+                        .tools(tools)
                         .toolContext(Map.of("requestType", "chat-stream"))
                         .stream()
                         .content()

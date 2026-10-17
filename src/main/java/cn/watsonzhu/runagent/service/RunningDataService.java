@@ -19,6 +19,7 @@ import cn.watsonzhu.runagent.model.running.RunningSummary;
 import cn.watsonzhu.runagent.model.running.RunningActivitySummary;
 import cn.watsonzhu.runagent.model.running.DistanceType;
 import cn.watsonzhu.runagent.model.running.PersonalBest;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
@@ -28,6 +29,7 @@ import tools.jackson.databind.ObjectMapper;
  * 只映射统计所需字段；Tool 返回精简结果，不把轨迹放入模型上下文。
  */
 @Service
+@ConditionalOnProperty(name = "run-agent.running-tools.provider", havingValue = "local", matchIfMissing = true)
 public class RunningDataService {
 
     private static final Pattern DURATION = Pattern.compile("(?:(\\d+) days?, )?(\\d+):([0-5]\\d):([0-5]\\d)");

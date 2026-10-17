@@ -1,0 +1,17 @@
+spring:
+  ai:
+    mcp:
+      client:
+        enabled: true
+        initialized: false
+        name: run-agent
+        version: 0.6.0
+        type: SYNC
+        request-timeout: 10s
+        toolcallback:
+          enabled: false
+        streamable-http:
+          connections:
+            running:
+              url: ${RUNNING_MCP_URL:http://127.0.0.1:8090}
+              endpoint: /mcp

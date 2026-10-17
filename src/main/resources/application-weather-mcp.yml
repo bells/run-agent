@@ -1,0 +1,18 @@
+spring:
+  ai:
+    mcp:
+      client:
+        enabled: true
+        initialized: false
+        name: run-agent
+        version: 0.6.0
+        type: SYNC
+        request-timeout: 10s
+        toolcallback:
+          enabled: false
+        streamable-http:
+          connections:
+            weather:
+              # Full Streamable HTTP URL, including /mcp. Missing variable fails startup.
+              url: ${WEATHER_MCP_URL}
+              endpoint: ${WEATHER_MCP_URL}

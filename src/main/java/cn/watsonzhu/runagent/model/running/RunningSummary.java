@@ -9,5 +9,5 @@ public record RunningSummary(
         int runCount,
         double totalDistanceKm,
         long totalDurationSeconds
-) {
+) implements java.io.Serializable {
 }

@@ -25,12 +25,12 @@ public class ApiExceptionHandler {
                 .findFirst()
                 .map(error -> error.getField() + ": " + error.getDefaultMessage())
                 .orElse("Request validation failed");
-        return response(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", message, exchange);
+        return response(HttpStatus.BAD_REQUEST, invalidRequestCode(exchange), message, exchange);
     }
 
     @ExceptionHandler({ConstraintViolationException.class, ServerWebInputException.class})
     public ResponseEntity<ApiError> handleInvalidRequest(Exception exception, ServerWebExchange exchange) {
-        return response(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", "Invalid request parameters", exchange);
+        return response(HttpStatus.BAD_REQUEST, invalidRequestCode(exchange), "Invalid request parameters", exchange);
     }
 
     @ExceptionHandler(StructuredOutputException.class)
@@ -70,6 +70,22 @@ public class ApiExceptionHandler {
         log.error("Unexpected request failure", exception);
         return response(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_ERROR",
                 "An unexpected error occurred", exchange);
+    }
+
+    @ExceptionHandler(WorkflowException.class)
+    public ResponseEntity<ApiError> handleWorkflow(WorkflowException exception, ServerWebExchange exchange) {
+        HttpStatus status = switch (exception.kind()) {
+            case INVALID_REQUEST -> HttpStatus.BAD_REQUEST;
+            case TIMEOUT -> HttpStatus.GATEWAY_TIMEOUT;
+            case DEPENDENCY_UNAVAILABLE -> HttpStatus.SERVICE_UNAVAILABLE;
+            case EXECUTION_FAILED -> HttpStatus.BAD_GATEWAY;
+        };
+        return response(status, "WORKFLOW_" + exception.kind().name(), exception.getMessage(), exchange);
+    }
+
+    private static String invalidRequestCode(ServerWebExchange exchange) {
+        return "/api/workflows/training-analysis".equals(exchange.getRequest().getPath().value())
+                ? "WORKFLOW_INVALID_REQUEST" : "INVALID_REQUEST";
     }
 
     private ResponseEntity<ApiError> response(HttpStatus status, String code, String message,

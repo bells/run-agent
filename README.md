@@ -1,4 +1,4 @@
-# RunAgent v0.6
+# RunAgent v0.7
 
 RunAgent 是 Watson 的个人跑步 AI 后端与 Java / Spring AI 学习项目。它与 [Watson Running](https://github.com/bells/watson-running) 独立构建和部署。
 
@@ -10,6 +10,7 @@ RunAgent 是 Watson 的个人跑步 AI 后端与 Java / Spring AI 学习项目�
 - `POST /api/knowledge/ask`：无状态的跑步书籍 RAG 问答；默认关闭，使用前需启用本地知识库。
 - `POST /api/knowledge/search`：仅 local profile 提供检索调试，返回来源、分数及最多 200 字的 preview。
 - `POST /api/agent`：多步 Tool Calling + 有界 Conversation Memory，返回 `conversationId`、`executionId`、实际执行的 `toolCallCount` 和最终 `content`。
+- `POST /api/workflows/training-analysis`：LangGraph4j 确定性训练分析，显式选择 Running / Knowledge / Combined；无状态，分析模型没有 Tools 或 Memory。
 
 Tool Calling 使模型能够请求 Java 工具；v0.3 Agent Loop 在一次请求内根据 Tool 结果继续行动。v0.4 让 `/api/agent` 跨请求恢复有限对话上下文。`/api/chat`、`/api/chat/stream` 和 `/api/intent` 仍是无状态接口。
 
@@ -29,6 +30,50 @@ Client conversationId → POST /api/agent → RunAgentService
 ```
 
 比较两个时间段时，模型应分别调用 `getRunningSummary` 两次；需要个别训练时再调用 `getRecentRuns`。不提供 `compareRunningPeriods`，以便观察根据前一 Observation 作出的下一步决定。完整机制见 [Agent Loop](docs/agent-loop.md)；v0.2 的底层协议学习实验见 [Tool Calling Flow](docs/tool-calling-flow.md)。
+
+## Workflow / LangGraph4j：v0.7
+
+`/api/agent` 由 LLM 决定下一步 Tool；新 Workflow 由 Java / Graph 决定每一步。两者复用能力，但保留独立 API、State 和执行标识。
+
+```text
+/api/agent                       → Dynamic Agent Loop → Running / Weather MCP
+/api/workflows/training-analysis → LangGraph4j Graph  → Running Capability + RAG + LLM Analysis
+/api/knowledge/*                 → Standalone RAG
+```
+
+| Capability | 谁控制下一步 | 主要用途 |
+| --- | --- | --- |
+| Agent Loop | LLM | 开放式动态任务 |
+| Workflow | Java / Graph | 明确业务流程 |
+| MCP | Protocol / Capability Provider | 标准化外部能力发现与调用 |
+| RAG | Retriever | 当前问题的外部知识检索 |
+| Memory | Conversation ID | 多轮上下文 |
+
+只引入 `org.bsc.langgraph4j:langgraph4j-core:1.8.27`。2026-10-25 核对 [Maven Central metadata](https://repo.maven.apache.org/maven2/org/bsc/langgraph4j/langgraph4j-core/maven-metadata.xml) 和 [官方 1.8 支持分支](https://github.com/langgraph4j/langgraph4j/tree/support/1.8.x)，这是最新 1.8.x LTS；保持 Java 21 和 Spring AI BOM 2.0.1，不追随 1.9.x 实验特性。
+
+```mermaid
+flowchart TD
+    START --> validateInput
+    validateInput -->|RUNNING_ONLY / COMBINED| fetchRunningData
+    validateInput -->|KNOWLEDGE_ONLY| retrieveKnowledge
+    fetchRunningData -->|RUNNING_ONLY| analyze
+    fetchRunningData -->|COMBINED| retrieveKnowledge
+    retrieveKnowledge --> analyze
+    analyze --> validateOutput
+    validateOutput --> END
+```
+
+```bash
+curl -X POST http://localhost:8080/api/workflows/training-analysis \
+  -H 'Content-Type: application/json' \
+  -d '{"question":"结合跑步汇总和知识库分析训练安排。","mode":"COMBINED","startDate":"2026-09-25","endDate":"2026-10-24"}'
+```
+
+`RUNNING_ONLY` / `COMBINED` 必须提供起止日期，含首尾最多 366 天；`KNOWLEDGE_ONLY` 可以省略两个日期，提供时必须成对且合法。日期按所需分析区间调整。响应只包含 `executionId`、`mode`、`executedNodes`、`content`；不返回 State、检索片段、Prompt 或工具结果。
+
+Running 节点按照 `RUNNING_TOOL_PROVIDER` 使用 local service 或已经通过白名单过滤的 Running MCP callback；MCP 模式不会读取 Host 本地文件。Knowledge 节点复用 `KnowledgeSearchService` 的 TopK/threshold/索引与安全日志，须开启 `RAG_ENABLED=true` 并准备可用索引。Analysis 只解释已收集证据；不会自行选 Tool、重新检索或访问 Conversation Memory。
+
+默认 `WORKFLOW_TIMEOUT=60s`，是应用 deadline 和尽力取消。必需证据不可用、零召回、模型失败或空答复会安全失败，不降级为模型常识。Weather 继续属于 Agent 的动态能力；当前不做 Weather Workflow、Checkpoint/Saver、Retry、Streaming/Resume、并行 Graph、Evaluation 或 Multi-Agent。完整概念见 [Workflow 学习手册](docs/workflow.md)，实测边界见 [v0.7 验证](docs/v0.7-verification.md)。
 
 ## MCP：v0.6
 
@@ -101,7 +146,7 @@ Trace只记录executionId、step、tool、source=mcp、status和latency；`ToolC
 
 ## 配置与启动
 
-技术基线：Java 21、Gradle Wrapper 9.7.1、Spring Boot 4.1.1、Spring AI 2.0.1、WebFlux / Reactor、Bean Validation 和 JUnit 5。
+技术基线：Java 21、Gradle Wrapper 9.7.1、Spring Boot 4.1.1、Spring AI 2.0.1、LangGraph4j Core 1.8.27、WebFlux / Reactor、Bean Validation 和 JUnit 5。
 
 ```bash
 export AI_GATEWAY_BASE_URL="https://api.deepseek.com"
@@ -228,7 +273,7 @@ curl -X POST http://localhost:8080/api/knowledge/search \
 | v0.3 | Agent Loop |
 | v0.4 | Memory |
 | v0.5 | RAG |
-| v0.6 | MCP（当前） |
-| v0.7 | Workflow / LangGraph |
-| v0.8 | Evaluation / Observability |
-| v0.9 | Multi-Agent |
+| v0.6 | MCP |
+| v0.7 | Workflow / LangGraph4j（当前） |
+| v0.8 | Evaluation / Observability（未实现） |
+| v0.9 | Multi-Agent（未实现） |

@@ -60,6 +60,23 @@ class OpenAiGatewayTest {
         assertThat(REQUEST_BODY.get().path("stream").asBoolean()).isTrue();
     }
 
+    @Test
+    void emptyProviderResponseDoesNotLogThePrompt() {
+        var logger = (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(
+                org.springframework.ai.openai.OpenAiChatModel.class);
+        var events = new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();
+        events.start();
+        logger.addAppender(events);
+        try {
+            chatModel.call("synthetic-sensitive-evidence");
+            assertThat(events.list).noneSatisfy(event ->
+                    assertThat(event.getFormattedMessage()).contains("synthetic-sensitive-evidence"));
+        } finally {
+            logger.detachAppender(events);
+            events.stop();
+        }
+    }
+
     private static HttpServer startServer() {
         try {
             HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
@@ -67,6 +84,13 @@ class OpenAiGatewayTest {
                 REQUEST_PATH.set(exchange.getRequestURI().getPath());
                 AUTHORIZATION.set(exchange.getRequestHeaders().getFirst("Authorization"));
                 REQUEST_BODY.set(JSON.readTree(exchange.getRequestBody()));
+                if (REQUEST_BODY.get().path("messages").get(0).path("content").asText().equals("synthetic-sensitive-evidence")) {
+                    byte[] response = "{\"id\":\"empty\",\"object\":\"chat.completion\",\"created\":0,\"model\":\"gateway-test-model\",\"choices\":[]}".getBytes(StandardCharsets.UTF_8);
+                    exchange.getResponseHeaders().set("Content-Type", "application/json");
+                    exchange.sendResponseHeaders(200, response.length);
+                    try (var body = exchange.getResponseBody()) { body.write(response); }
+                    return;
+                }
                 if (REQUEST_BODY.get().path("stream").asBoolean()) {
                     byte[] response = ("data: {\"id\":\"chatcmpl-test\",\"object\":\"chat.completion.chunk\","
                             + "\"created\":0,\"model\":\"gateway-test-model\",\"choices\":[{\"index\":0,"

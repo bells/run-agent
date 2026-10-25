@@ -75,6 +75,20 @@ class KnowledgeQaServiceTest {
         assertThat(search.search("unknown topic").matches()).isEmpty();
     }
 
+    @Test void internalRetrievalReturnsFullEvidenceWithExistingSearchConfiguration() {
+        var store = store();
+        var search = search(store);
+        var documents = search.retrieveDocuments("internal-query", "轻松训练");
+        assertThat(documents).hasSize(2);
+        assertThat(documents).anySatisfy(document -> assertThat(document.getText()).hasSizeGreaterThan(200));
+        var request = org.mockito.ArgumentCaptor.forClass(SearchRequest.class);
+        verify(store).similaritySearch(request.capture());
+        assertThat(request.getValue().getQuery()).isEqualTo("轻松训练");
+        assertThat(request.getValue().getTopK()).isEqualTo(5);
+        assertThat(request.getValue().getSimilarityThreshold()).isEqualTo(0.5);
+        assertThat(search.retrieveDocuments("empty-query", "unknown topic")).isEmpty();
+    }
+
     private SimpleVectorStore store() {
         var store = spy(SimpleVectorStore.builder(new RagTestSupport.FakeEmbedding()).build());
         store.add(List.of(new Document("自创知识：轻松训练应采用可交谈强度。".repeat(30), Map.of("sourceTitle", "合成训练手册")),

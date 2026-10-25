@@ -8,6 +8,7 @@ import java.time.LocalDate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -18,6 +19,7 @@ public class PromptCatalog {
     private final String chatSystemPrompt;
     private final String intentSystemPrompt;
     private final String agentSystemPrompt;
+    private final String trainingAnalysisWorkflowSystemPrompt;
     private final Clock clock;
 
     @Autowired
@@ -40,6 +42,7 @@ public class PromptCatalog {
         this.chatSystemPrompt = read(chatSystemPrompt);
         this.intentSystemPrompt = read(intentSystemPrompt);
         this.agentSystemPrompt = read(agentSystemPrompt);
+        this.trainingAnalysisWorkflowSystemPrompt = read(new ClassPathResource("prompts/training-analysis-workflow-system.txt"));
         this.clock = clock;
     }
 
@@ -54,6 +57,10 @@ public class PromptCatalog {
 
     public String agentSystemPrompt() {
         return agentSystemPrompt.replace(CURRENT_DATE_TOKEN, LocalDate.now(clock).toString());
+    }
+
+    public String trainingAnalysisWorkflowSystemPrompt() {
+        return trainingAnalysisWorkflowSystemPrompt;
     }
 
     private static String read(Resource resource) {

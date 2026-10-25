@@ -5,7 +5,7 @@ plugins {
 }
 
 group = 'cn.watsonzhu'
-version = '0.6.0-SNAPSHOT'
+version = '0.7.0-SNAPSHOT'
 
 java {
     toolchain {
@@ -36,6 +36,7 @@ dependencies {
     implementation 'org.springframework.ai:spring-ai-starter-model-ollama'
     implementation 'org.springframework.ai:spring-ai-vector-store-advisor'
     implementation 'org.springframework.ai:spring-ai-tika-document-reader'
+    implementation 'org.bsc.langgraph4j:langgraph4j-core:1.8.27'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'io.projectreactor:reactor-test'

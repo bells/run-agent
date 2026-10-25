@@ -3,7 +3,6 @@ package cn.watsonzhu.runagent.tool;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
-import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.function.Supplier;
 
@@ -15,6 +14,7 @@ import cn.watsonzhu.runagent.model.running.PersonalBest;
 import cn.watsonzhu.runagent.model.running.RunningActivitySummary;
 import cn.watsonzhu.runagent.model.running.RunningSummary;
 import cn.watsonzhu.runagent.service.RunningDataService;
+import cn.watsonzhu.runagent.service.RunningDateRange;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.model.ToolContext;
@@ -27,7 +27,6 @@ import org.springframework.stereotype.Component;
 @ConditionalOnProperty(name = "run-agent.running-tools.provider", havingValue = "local", matchIfMissing = true)
 public class RunningTools {
     private static final Logger log = LoggerFactory.getLogger(RunningTools.class);
-    private static final long MAX_QUERY_DAYS = 366;
     private final RunningDataService runningDataService;
 
     public RunningTools(RunningDataService runningDataService) {
@@ -42,7 +41,7 @@ public class RunningTools {
             @ToolParam(description = "Inclusive end date in ISO-8601 yyyy-MM-dd format") String endDate,
             ToolContext context) {
         return execute("getRunningSummary", context, () -> {
-            DateRange range = parseRange(startDate, endDate);
+            RunningDateRange range = parseRange(startDate, endDate);
             return runningDataService.summarize(range.start(), range.end());
         });
     }
@@ -60,7 +59,7 @@ public class RunningTools {
             @ToolParam(description = "Maximum number of runs, from 1 to 20") int limit,
             ToolContext context) {
         return execute("getRecentRuns", context, () -> {
-            DateRange range = parseRange(startDate, endDate);
+            RunningDateRange range = parseRange(startDate, endDate);
             if (limit < 1 || limit > 20) {
                 throw new InvalidRunningQueryException("limit must be between 1 and 20");
             }
@@ -84,16 +83,10 @@ public class RunningTools {
         });
     }
 
-    private static DateRange parseRange(String startDate, String endDate) {
+    private static RunningDateRange parseRange(String startDate, String endDate) {
         LocalDate start = parseDate(startDate, "startDate");
         LocalDate end = parseDate(endDate, "endDate");
-        if (start.isAfter(end)) {
-            throw new InvalidRunningQueryException("startDate must not be after endDate");
-        }
-        if (ChronoUnit.DAYS.between(start, end) + 1 > MAX_QUERY_DAYS) {
-            throw new InvalidRunningQueryException("Date range must not exceed 366 inclusive days");
-        }
-        return new DateRange(start, end);
+        return new RunningDateRange(start, end);
     }
 
     private static LocalDate parseDate(String value, String parameter) {
@@ -136,6 +129,4 @@ public class RunningTools {
         return Duration.ofNanos(System.nanoTime() - startedAt).toMillis();
     }
 
-    private record DateRange(LocalDate start, LocalDate end) {
-    }
 }

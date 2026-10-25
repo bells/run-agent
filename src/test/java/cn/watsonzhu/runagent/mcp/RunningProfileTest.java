@@ -4,6 +4,8 @@ import cn.watsonzhu.runagent.config.RunningDataProperties;
 import cn.watsonzhu.runagent.config.RunningToolProperties;
 import cn.watsonzhu.runagent.service.RunningDataService;
 import cn.watsonzhu.runagent.tool.RunningTools;
+import cn.watsonzhu.runagent.workflow.LocalRunningCapabilityGateway;
+import cn.watsonzhu.runagent.workflow.McpRunningCapabilityGateway;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.env.YamlPropertySourceLoader;
@@ -18,6 +20,7 @@ class RunningProfileTest {
     @Test void mcpProfileSelectsRemoteRunningToolsWithoutAnEnvironmentVariable() {
         context(true).run(ctx -> {
             assertThat(ctx).hasNotFailed().doesNotHaveBean(RunningTools.class).doesNotHaveBean(RunningDataService.class);
+            assertThat(ctx).hasSingleBean(McpRunningCapabilityGateway.class).doesNotHaveBean(LocalRunningCapabilityGateway.class);
             var properties = ctx.getBean(RunningToolProperties.class);
             assertThat(properties.provider()).isEqualTo("mcp");
             assertThat(new McpPolicy(properties.provider()).filter().test(
@@ -29,6 +32,7 @@ class RunningProfileTest {
     @Test void ordinaryStartupKeepsLocalToolsAndDoesNotEnableMcp() {
         context(false).run(ctx -> {
             assertThat(ctx).hasNotFailed().hasSingleBean(RunningTools.class).hasSingleBean(RunningDataService.class);
+            assertThat(ctx).hasSingleBean(LocalRunningCapabilityGateway.class).doesNotHaveBean(McpRunningCapabilityGateway.class);
             assertThat(ctx.getBean(RunningToolProperties.class).provider()).isEqualTo("local");
             assertThat(ctx.getEnvironment().getProperty("spring.ai.mcp.client.enabled", Boolean.class)).isFalse();
         });
@@ -45,7 +49,8 @@ class RunningProfileTest {
 
     private ApplicationContextRunner context(boolean mcp) {
         return new ApplicationContextRunner()
-                .withUserConfiguration(PropertiesConfig.class, RunningTools.class, RunningDataService.class)
+                .withUserConfiguration(PropertiesConfig.class, RunningTools.class, RunningDataService.class,
+                        LocalRunningCapabilityGateway.class, McpRunningCapabilityGateway.class)
                 .withBean(tools.jackson.databind.ObjectMapper.class, JsonMapper::new)
                 .withInitializer(ctx -> {
                     try {

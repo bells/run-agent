@@ -32,7 +32,7 @@ public class KnowledgeSearchService {
 
     public KnowledgeSearchResponse search(String query) {
         String queryId = UUID.randomUUID().toString();
-        List<Document> documents = retrieve(queryId, SearchRequest.from(request()).query(query).build());
+        List<Document> documents = retrieveDocuments(queryId, query);
         var results = new java.util.ArrayList<KnowledgeSearchMatch>();
         for (Document document : documents) {
             results.add(new KnowledgeSearchMatch(results.size() + 1, document.getScore(), document.getId(),
@@ -40,6 +40,10 @@ public class KnowledgeSearchService {
                     preview(document.getText())));
         }
         return new KnowledgeSearchResponse(queryId, List.copyOf(results));
+    }
+
+    public List<Document> retrieveDocuments(String queryId, String query) {
+        return List.copyOf(retrieve(queryId, SearchRequest.from(request()).query(query).build()));
     }
 
     private List<Document> retrieve(String queryId, SearchRequest request) {

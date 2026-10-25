@@ -22,7 +22,7 @@ Java 21 / Spring Boot / Spring AI
 
 ## 当前阶段
 
-当前版本是 v0.6，已经实现：
+当前版本是 v0.7（0.7.0-SNAPSHOT），已经实现：
 
 - `POST /api/chat`：普通 Chat。
 - `GET /api/chat/stream`：UTF-8 SSE Streaming Chat。
@@ -35,7 +35,9 @@ Java 21 / Spring Boot / Spring AI
 
 - v0.6 新增默认关闭的 Spring AI MCP Client、独立同级 Running MCP Server，以及可选第三方 Weather MCP；Streamable HTTP、3+3工具白名单、故障隔离和本地Trace，详见 `docs/mcp.md`。普通启动默认provider=local，启用mcp profile后默认provider=mcp（可由RUNNING_TOOL_PROVIDER显式覆盖）；MCP模式不创建本地RunningTools/RunningDataService，数据路径归Server。
 
-v0.6 不实现自定义 Agent Loop、长期 Memory、数据库、Hybrid Search、Reranker、RAG Tool、Agentic RAG、Workflow、LangGraph、Multi-Agent、复杂认证或完整 Observability。后续能力必须按版本目标逐步加入。
+- v0.7 新增 `POST /api/workflows/training-analysis`，使用 LangGraph4j Core 1.8.27 StateGraph，五节点与显式 mode Conditional Edge；复用 local/MCP Running Gateway 和现有 RAG 检索。无状态，Analysis 无 Tools、Memory 或 QuestionAnswerAdvisor。详见 `docs/workflow.md`。
+
+v0.7 不实现自定义 Agent Loop、长期 Memory、数据库、Hybrid Search、Reranker、RAG Tool、Agentic RAG、Checkpoint Persistence、Workflow Streaming/Resume/并行、Retry Graph、Multi-Agent、复杂认证或完整 Observability。v0.8 Evaluation / Observability 和 v0.9 Multi-Agent 仍未实现。后续能力必须按版本目标逐步加入。
 
 ## 已验证技术基线
 
@@ -43,6 +45,7 @@ v0.6 不实现自定义 Agent Loop、长期 Memory、数据库、Hybrid Search�
 - Gradle Wrapper 9.7.1。
 - Spring Boot 4.1.1。
 - Spring AI 2.0.1。
+- LangGraph4j Core 1.8.27（1.8.x LTS；仅 Graph orchestration）。
 - Spring WebFlux / Reactor、Bean Validation、JUnit 5。
 
 使用 Gradle Wrapper，不要引入 Maven 构建或提交本机 Gradle/JDK 文件：
@@ -69,6 +72,7 @@ Controller -> RunAgentService -> ChatClient -> LLM
 - `prompt/PromptCatalog` 加载 `src/main/resources/prompts/` 下的提示词。不要把大段 Prompt 散落在 Controller 或 Service 方法中。
 - `exception/` 提供小而明确的异常和安全的 HTTP 错误响应，不建立庞大的通用基础框架。
 - 不要仅为“分层”创建没有真实替换需求的 interface + impl。
+- Workflow 入口独立为 `Controller -> TrainingAnalysisWorkflow -> Nodes`；不把既有 Agent 改成 Graph。
 
 ## Java 与 Spring AI 约定
 
@@ -123,6 +127,18 @@ Controller -> RunAgentService -> ChatClient -> LLM
 - 启动时逐连接隔离发现；当前快照需重启恢复，不实现动态Server管理。保留每工具4次/总8次、MCP10s/Agent30s。
 - 自动测试不访问公共MCP、真实模型或私有数据；真实验收需单独说明结果及网络限制。
 
+## Workflow 边界
+
+- `TrainingAnalysisWorkflow` 启动 compile 一次，真实 StateGraph / Node / Edge / Conditional Edge；mode 只支持 RUNNING_ONLY、KNOWLEDGE_ONLY、COMBINED，不使用 LLM Router。
+- 每次请求独立 State 和 UUID executionId；executedNodes 使用 Appender Channel，其他字段覆盖。State 不等于 Conversation Memory 或 Checkpoint。
+- `ValidateInputNode` 使用共享 `RunningDateRange` 校验含首尾最多 366 天；Controller 只做 HTTP 和 Bean Validation。
+- Running 节点使用当前 provider；local 复用 RunningDataService，mcp 只通过 McpCatalog 已过滤 callback，不创建本地 service，不重新发现，不手写 JSON-RPC。
+- RAG 节点复用 KnowledgeSearchService.retrieveDocuments 和现有 TopK/threshold/索引；不通过 QA Advisor 隐藏检索。关闭、故障或零召回均 fail fast。
+- Analysis 使用独立 ChatClient，不注册 Tools、Memory、QA Advisor，并关闭 Spring AI 2.0.1 ToolCallingAdvisor 自动注册。拒绝模型意外的 Tool Call。
+- 不启用任何 Saver/Checkpoint Persistence、Retry、Resume、并行节点、Weather Workflow、Multi-Agent 或 LLM Judge。
+- Graph/MCP/LLM 阻塞调用在 boundedElastic 执行，WORKFLOW_TIMEOUT 默认 60s；只是 deadline + best-effort cancellation。每订阅独立的 WorkflowExecutionControl 通过本地 RunnableConfig metadata 传递，节点前后检查统一 deadline/取消标记，即使底层吞掉 interrupt 也不启动后续节点。
+- Trace 不复用 AgentExecutionTrace；只记录 workflowExecutionId、node、phase/status、latencyMs。框架 Graph 日志关闭，不能打开后泄露 State、正文或 Prompt。
+
 ## 配置与安全
 
 - 模型通过 Spring AI OpenAI Chat 客户端连接 OpenAI 兼容端点；`AI_GATEWAY_BASE_URL`、`AI_GATEWAY_API_KEY`、`AI_GATEWAY_MODEL` 在启动时选择 DeepSeek、OpenRouter 或本地 Ollama。旧 `DEEPSEEK_*` 和本地 profile 中 `spring.ai.deepseek.*` 仅作为过渡回退。
@@ -153,8 +169,8 @@ Controller -> RunAgentService -> ChatClient -> LLM
 v0.3 Agent Loop
 v0.4 Memory
 v0.5 RAG
-v0.6 MCP (current)
-v0.7 Workflow / LangGraph
+v0.6 MCP
+v0.7 Workflow / LangGraph4j (current)
 v0.8 Evaluation / Observability
 v0.9 Multi-Agent
 ```

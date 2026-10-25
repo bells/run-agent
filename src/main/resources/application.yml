@@ -51,6 +51,8 @@ run-agent:
     timeout: ${RAG_TIMEOUT:180s}
   agent:
     timeout: ${AGENT_TIMEOUT:30s}
+  workflow:
+    timeout: ${WORKFLOW_TIMEOUT:60s}
   memory:
     max-messages: ${AGENT_MEMORY_MAX_MESSAGES:20}
   running-data:
@@ -63,7 +65,11 @@ logging:
     # SimpleVectorStore's default logs include file paths; provider errors may include source data.
     org.springframework.ai.vectorstore.SimpleVectorStore: OFF
     org.springframework.ai.ollama: OFF
+    # OpenAiChatModel warns with the complete Prompt when the provider returns no choices.
+    org.springframework.ai.openai: OFF
     org.apache.tika: OFF
     # Official MCP adapter errors can contain full remote payloads.
     org.springframework.ai.mcp: OFF
     io.modelcontextprotocol: OFF
+    # Graph internals can log complete state and node updates, including private evidence.
+    org.bsc.langgraph4j: OFF

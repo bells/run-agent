@@ -61,7 +61,6 @@ export RUNNING_MCP_PORT=8090
 
 ```bash
 cd ../run-agent
-export RUNNING_TOOL_PROVIDER=mcp
 export RUNNING_MCP_URL="http://127.0.0.1:8090"
 ./gradlew bootRun --args='--spring.profiles.active=local,mcp --server.address=127.0.0.1'
 ```
@@ -70,8 +69,9 @@ Weather 未启用时不会建立第三方 Weather MCP 连接。测试和默认�
 
 ## 5. Local 与 MCP
 
-`RUNNING_TOOL_PROVIDER=local` 为兼容模式，也是默认值；使用现有三项本地工具，可选叠加 Weather。
-`RUNNING_TOOL_PROVIDER=mcp` 为 v0.6 目标架构，必须启用 mcp profile 和 MCP client；配置不一致明确启动失败。
+未启用 `mcp` profile 时，`RUNNING_TOOL_PROVIDER=local` 为兼容模式和默认值；使用现有三项本地工具，可选叠加 Weather。
+启用 `mcp` profile 后，`application-mcp.yml` 默认选择 `mcp` provider，无需额外设置环境变量；IntelliJ Active profiles 填 `local,mcp` 即可。也可显式设置 `RUNNING_TOOL_PROVIDER=mcp`；该模式必须启用 mcp profile 和 MCP client，配置不一致明确启动失败。显式设置 `RUNNING_TOOL_PROVIDER=local` 则保留本地兼容模式，远端 Running Tools 会被过滤。
+`application-local.yml` 保留模型、RAG 和本地兼容数据路径；MCP 模式不会读取其中的 `running-data.path`。出现 `discovered=3 exposed=0` 且执行日志来自本地 `RunningTools` 时，先检查是否显式设置了 local provider。正常目标状态为 `exposed=3`，调用日志包含 `source=mcp server=running`。
 本地工具和数据 Service 仅在 local 模式注册。单一 McpToolFilter 在 local 模式拒绝远端 Running Tools，因此不会同时向模型暴露两套同名跑步能力。
 
 ## 6. Discovery 与显式注册
@@ -102,11 +102,10 @@ chatClient.prompt()
 ```bash
 # 从上游 README 获取当前 public hosted Streamable HTTP URL，包含 /mcp。
 export WEATHER_MCP_URL="<current-public-hosted-streamable-http-url>"
-export RUNNING_TOOL_PROVIDER=mcp
 ./gradlew bootRun --args='--spring.profiles.active=local,mcp,weather-mcp --server.address=127.0.0.1'
 ```
 
-Weather profile 未提供有效绝对 HTTP(S) URL 时启动失败，不连接默认或猜测的地址。不接受 URL 用户凭据、query 或 fragment。
+Weather profile 配置了公共服务默认地址，可通过 `WEATHER_MCP_URL` 覆盖；启用 profile 即表示选择连接该默认服务或覆盖地址。`WeatherMcpConfig` 校验最终生效的 `spring.ai.mcp.client.streamable-http.connections.weather.url`，不单独读取原始环境变量，因此 YAML 默认值和环境变量覆盖采用相同的校验路径。最终URL为空或不是有效绝对 HTTP(S) URL 时启动失败；不接受 URL 用户凭据、query 或 fragment。未启用此 profile 时不连接公共服务。
 2.0.1 Transport 的 endpoint 不能为空；Weather 配置将完整 URL 同时用于 base URL 和绝对 endpoint，绝对 URI 覆盖 base URL，避免 `/mcp/mcp`。
 
 ## 8. Weather 工具与 Schema

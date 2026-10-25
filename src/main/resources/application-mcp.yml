@@ -1,3 +1,8 @@
+run-agent:
+  running-tools:
+    # Activating this profile selects remote Running tools unless explicitly overridden.
+    provider: ${RUNNING_TOOL_PROVIDER:mcp}
+
 spring:
   ai:
     mcp:

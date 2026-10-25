@@ -8,7 +8,8 @@ import org.springframework.context.annotation.Profile;
 @Configuration(proxyBeanMethods = false)
 @Profile("weather-mcp")
 public class WeatherMcpConfig {
-    public WeatherMcpConfig(@Value("${WEATHER_MCP_URL:}") String url) {
+    public WeatherMcpConfig(
+            @Value("${spring.ai.mcp.client.streamable-http.connections.weather.url:}") String url) {
         try {
             URI uri = URI.create(url);
             if (!("https".equals(uri.getScheme()) || "http".equals(uri.getScheme()))
@@ -17,7 +18,8 @@ public class WeatherMcpConfig {
                 throw new IllegalArgumentException();
             }
         } catch (IllegalArgumentException exception) {
-            throw new IllegalArgumentException("weather-mcp requires WEATHER_MCP_URL as an absolute HTTP(S) endpoint without credentials, query or fragment");
+            throw new IllegalArgumentException("weather-mcp requires spring.ai.mcp.client.streamable-http.connections.weather.url "
+                    + "as an absolute HTTP(S) endpoint without credentials, query or fragment");
         }
     }
 }

@@ -13,6 +13,6 @@ spring:
         streamable-http:
           connections:
             weather:
-              # Full Streamable HTTP URL, including /mcp. Missing variable fails startup.
-              url: ${WEATHER_MCP_URL}
-              endpoint: ${WEATHER_MCP_URL}
+              # Full URL including /mcp; the environment variable overrides this profile's public default.
+              url: ${WEATHER_MCP_URL:https://open-meteo.caseyjhand.com/mcp}
+              endpoint: ${WEATHER_MCP_URL:https://open-meteo.caseyjhand.com/mcp}

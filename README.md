@@ -45,7 +45,7 @@ RunAgent 是 MCP Host，使用 `spring-ai-starter-mcp-client-webflux` 消费两�
 ```
 
 Tool Calling 决定“调用什么、参数是什么”；MCP 统一能力发现与调用。ToolCallingAdvisor 和 Memory 继续使用；RAG 仍是独立 Knowledge API，没有加入 Agent Tools。
-默认 `RUNNING_TOOL_PROVIDER=local`、MCP Client 关闭，测试、build和普通启动均无需MCP服务。目标模式为`mcp`，Host不创建本地RunningTools/RunningDataService，不需要`RUNNING_DATA_PATH`。
+普通启动默认 `RUNNING_TOOL_PROVIDER=local`、MCP Client 关闭，测试、build均无需MCP服务。启用 `mcp` profile 后默认切换到 `mcp` provider，Host不创建本地RunningTools/RunningDataService，不需要`RUNNING_DATA_PATH`。显式设置 `RUNNING_TOOL_PROVIDER=local` 仍可覆盖该选择。
 
 终端1，独立应用（当前为本地 standalone project）：
 
@@ -61,12 +61,11 @@ export RUNNING_DATA_PATH="/absolute/path/to/generated/activities.json"
 
 ```bash
 cd ../run-agent
-export RUNNING_TOOL_PROVIDER=mcp
 export RUNNING_MCP_URL="http://127.0.0.1:8090"
 ./gradlew bootRun --args='--spring.profiles.active=local,mcp --server.address=127.0.0.1'
 ```
 
-启用Weather时，将`WEATHER_MCP_URL`设为上游README当前列出的完整public hosted Streamable HTTP URL（包含`/mcp`），并使用`local,mcp,weather-mcp`。URL缺失明确启动失败；未启用profile不会连接公共服务。也可按上游README自托管并将同一变量指向localhost。
+启用Weather时使用`local,mcp,weather-mcp`。Weather profile 配置了公共 Streamable HTTP 默认地址，可用`WEATHER_MCP_URL`覆盖为完整端点（包含`/mcp`）；公共地址变化时以最新上游README为准。校验使用最终生效的连接URL，地址为空或无效时明确启动失败；未启用profile不会连接公共服务。也可按上游README自托管并将同一变量指向localhost。
 
 单一`McpToolFilter`只放行3个Running Tools和3个Weather Tools（search_locations、forecast、air_quality），未知连接/Server/工具默认拒绝。发现Schema不等于全部暴露给模型。
 MCP timeout=10s，Agent=30s，调用上限仍4/8。逐连接启动发现失败互不拖累；启动时不可用的服务恢复后需重启Host重新发现。调用失败返回安全证据缺失信息；不会用模型常识编造天气或个人跑量。

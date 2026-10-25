@@ -33,7 +33,7 @@ Java 21 / Spring Boot / Spring AI
 
 - v0.5 新增独立、无状态的 `/api/knowledge/ask`，使用本地书籍、Tika / TextReader、TokenTextSplitter、Ollama Embedding、SimpleVectorStore 和 QuestionAnswerAdvisor；仅 local profile 提供 `/api/knowledge/search`。默认关闭，详情见 `docs/rag.md`。
 
-- v0.6 新增默认关闭的 Spring AI MCP Client、独立同级 Running MCP Server，以及可选第三方 Weather MCP；Streamable HTTP、3+3工具白名单、故障隔离和本地Trace，详见 `docs/mcp.md`。默认provider=local；目标provider=mcp不创建本地RunningTools/RunningDataService，数据路径归Server。
+- v0.6 新增默认关闭的 Spring AI MCP Client、独立同级 Running MCP Server，以及可选第三方 Weather MCP；Streamable HTTP、3+3工具白名单、故障隔离和本地Trace，详见 `docs/mcp.md`。普通启动默认provider=local，启用mcp profile后默认provider=mcp（可由RUNNING_TOOL_PROVIDER显式覆盖）；MCP模式不创建本地RunningTools/RunningDataService，数据路径归Server。
 
 v0.6 不实现自定义 Agent Loop、长期 Memory、数据库、Hybrid Search、Reranker、RAG Tool、Agentic RAG、Workflow、LangGraph、Multi-Agent、复杂认证或完整 Observability。后续能力必须按版本目标逐步加入。
 
@@ -115,7 +115,7 @@ Controller -> RunAgentService -> ChatClient -> LLM
 
 ## MCP 边界
 
-- MCP Client 默认关闭；`mcp` profile 配置Running，`weather-mcp`显式配置完整WEATHER_MCP_URL。不要硬编码公共端点。
+- MCP Client 默认关闭；`mcp` profile 配置Running，`weather-mcp`配置公共默认地址并允许WEATHER_MCP_URL覆盖。校验最终生效的连接URL，不单独校验原始环境变量；不要在Java中硬编码公共端点。
 - 使用官方2.0.1 Starter/Provider，单一McpToolFilter按配置连接和服务身份白名单，未知默认拒绝；不要手写JSON-RPC或每请求重新发现。
 - provider=mcp时不同时注册local Running Tools；不要把RAG做成MCP或Agent Tool。
 - Trace保留Host本地，noOp metadata converter加空委托ToolContext；不记录原始请求/结果。SDK错误日志可能含payload，保持关闭。

@@ -1,0 +1,9 @@
+<configuration>
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder><pattern>%msg%n</pattern></encoder>
+    </appender>
+    <logger name="org.springframework.ai" level="OFF"/>
+    <logger name="io.modelcontextprotocol" level="OFF"/>
+    <logger name="org.bsc.langgraph4j" level="OFF"/>
+    <root level="WARN"><appender-ref ref="CONSOLE"/></root>
+</configuration>

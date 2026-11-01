@@ -1,6 +1,7 @@
 package cn.watsonzhu.runagent.workflow;
 
 import java.util.Map;
+import cn.watsonzhu.runagent.observability.RunAgentObservation;
 import java.util.UUID;
 import cn.watsonzhu.runagent.config.WorkflowProperties;
 import cn.watsonzhu.runagent.exception.WorkflowException;
@@ -21,9 +22,11 @@ import static org.bsc.langgraph4j.action.AsyncEdgeAction.edge_async;
 public class TrainingAnalysisWorkflow {
     private final CompiledGraph<TrainingAnalysisState> graph;
     private final WorkflowProperties properties;
+    private final RunAgentObservation observations;
 
     public TrainingAnalysisWorkflow(ValidateInputNode validate, RunningDataNode running, KnowledgeRetrievalNode knowledge,
-                                    AnalysisNode analysis, ValidateOutputNode output, WorkflowProperties properties) {
+                                    AnalysisNode analysis, ValidateOutputNode output, WorkflowProperties properties, RunAgentObservation observations) {
+        this.observations = observations;
         this.properties = properties;
         try {
             this.graph = new StateGraph<>(TrainingAnalysisState.SCHEMA, TrainingAnalysisState::new)
@@ -52,6 +55,11 @@ public class TrainingAnalysisWorkflow {
 
     public TrainingAnalysisResponse execute(TrainingAnalysisRequest request, WorkflowExecutionControl control) {
         String executionId = UUID.randomUUID().toString();
+        return observations.workflow(executionId, request.mode() == null ? null : request.mode().name(),
+                () -> execute(request, control, executionId));
+    }
+
+    private TrainingAnalysisResponse execute(TrainingAnalysisRequest request, WorkflowExecutionControl control, String executionId) {
         try {
             control.checkActive();
             var state = graph.invoke(TrainingAnalysisState.initial(request, executionId,
@@ -70,9 +78,9 @@ public class TrainingAnalysisWorkflow {
         }
     }
 
-    private static AsyncNodeActionWithConfig<TrainingAnalysisState> traced(String name, NodeAction<TrainingAnalysisState> action) {
+    private AsyncNodeActionWithConfig<TrainingAnalysisState> traced(String name, NodeAction<TrainingAnalysisState> action) {
         return AsyncNodeActionWithConfig.node_async((state, config) -> WorkflowExecutionTrace.run(state,
-                (WorkflowExecutionControl) config.metadata(WorkflowExecutionControl.CONFIG_KEY).orElseThrow(), name, () -> {
+                (WorkflowExecutionControl) config.metadata(WorkflowExecutionControl.CONFIG_KEY).orElseThrow(), name, observations, () -> {
             try {
                 return action.apply(state);
             } catch (RuntimeException exception) {

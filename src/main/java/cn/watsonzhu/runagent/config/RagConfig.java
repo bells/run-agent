@@ -17,9 +17,9 @@ public class RagConfig {
     @Bean
     @ConditionalOnProperty(prefix = "run-agent.rag", name = "enabled", havingValue = "true")
     KnowledgeIndexService knowledgeIndexService(RagProperties properties, EmbeddingModel embeddingModel,
-            OllamaEmbeddingProperties embedding, OllamaConnectionProperties connection) {
+            OllamaEmbeddingProperties embedding, OllamaConnectionProperties connection, io.micrometer.observation.ObservationRegistry observations) {
         return new KnowledgeIndexService(properties, embeddingModel, new KnowledgeDocumentLoader(),
-                embedding.getModel(), connection.getBaseUrl());
+                embedding.getModel(), connection.getBaseUrl(), observations);
     }
 
     @Bean

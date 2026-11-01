@@ -1,0 +1,35 @@
+{
+  "datasetVersion": "v1",
+  "documents": [
+    {
+      "id": "easy-1",
+      "text": "轻松跑使用舒适强度。",
+      "sourceTitle": "Synthetic Knowledge"
+    },
+    {
+      "id": "easy-2",
+      "text": "轻松跑允许身体恢复。",
+      "sourceTitle": "Synthetic Knowledge"
+    },
+    {
+      "id": "threshold-1",
+      "text": "阈值训练改善持续稳态能力。",
+      "sourceTitle": "Synthetic Knowledge"
+    },
+    {
+      "id": "threshold-2",
+      "text": "阈值训练应控制强度和时长。",
+      "sourceTitle": "Synthetic Knowledge"
+    },
+    {
+      "id": "long-1",
+      "text": "长距离训练逐步增加持续时间。",
+      "sourceTitle": "Synthetic Knowledge"
+    },
+    {
+      "id": "noise-1",
+      "text": "厨房烤箱的清洁方法。",
+      "sourceTitle": "Synthetic Knowledge"
+    }
+  ]
+}

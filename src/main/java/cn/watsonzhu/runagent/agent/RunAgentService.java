@@ -1,6 +1,7 @@
 package cn.watsonzhu.runagent.agent;
 
 import java.time.Duration;
+import cn.watsonzhu.runagent.observability.RunAgentObservation;
 import java.util.Map;
 import java.util.UUID;
 
@@ -29,6 +30,7 @@ public class RunAgentService {
 
     private static final Logger log = LoggerFactory.getLogger(RunAgentService.class);
 
+    private final RunAgentObservation observations;
     private final ChatClient chatClient;
     private final PromptCatalog prompts;
     private final ToolCallbackProvider tools;
@@ -37,7 +39,8 @@ public class RunAgentService {
 
     public RunAgentService(ChatClient.Builder chatClientBuilder, PromptCatalog prompts,
                            @Qualifier("agentTools") ToolCallbackProvider tools,
-                           ChatMemory chatMemory) {
+                           ChatMemory chatMemory, RunAgentObservation observations) {
+        this.observations = observations;
         this.chatClient = chatClientBuilder.build();
         this.prompts = prompts;
         this.tools = tools;
@@ -69,6 +72,10 @@ public class RunAgentService {
     public AgentResponse agent(String requestedConversationId, String message) {
         String conversationId = requestedConversationId == null ? UUID.randomUUID().toString() : requestedConversationId;
         AgentExecutionTrace trace = new AgentExecutionTrace(UUID.randomUUID().toString(), conversationId);
+        return observations.agent(trace.executionId(), trace::toolCallCount, () -> executeAgent(conversationId, message, trace));
+    }
+
+    private AgentResponse executeAgent(String conversationId, String message, AgentExecutionTrace trace) {
         long startedAt = System.nanoTime();
         try {
             int memoryMessagesBefore = chatMemory.get(conversationId).size();

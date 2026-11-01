@@ -1,0 +1,209 @@
+{
+  "datasetVersion": "v1",
+  "cases": [
+    {
+      "id": "summary-q1",
+      "question": "统计我在 2026-01-01 到 2026-03-31 的跑步次数、总公里和总时长。",
+      "ordered": false,
+      "allowedToolSets": [
+        [
+          {
+            "name": "getRunningSummary",
+            "arguments": {
+              "startDate": "2026-01-01",
+              "endDate": "2026-03-31"
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "id": "summary-january",
+      "question": "我在 2026-01-01 到 2026-01-31 跑了多少公里？",
+      "ordered": false,
+      "allowedToolSets": [
+        [
+          {
+            "name": "getRunningSummary",
+            "arguments": {
+              "startDate": "2026-01-01",
+              "endDate": "2026-01-31"
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "id": "summary-february",
+      "question": "汇总我在 2026-02-01 到 2026-02-28 的跑步情况。",
+      "ordered": false,
+      "allowedToolSets": [
+        [
+          {
+            "name": "getRunningSummary",
+            "arguments": {
+              "startDate": "2026-02-01",
+              "endDate": "2026-02-28"
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "id": "recent-three",
+      "question": "列出我在 2026-01-01 到 2026-03-31 最近 3 次跑步。",
+      "ordered": false,
+      "allowedToolSets": [
+        [
+          {
+            "name": "getRecentRuns",
+            "arguments": {
+              "startDate": "2026-01-01",
+              "endDate": "2026-03-31",
+              "limit": 3
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "id": "recent-one",
+      "question": "查询我在 2026-02-01 到 2026-02-28 最近 1 次跑步。",
+      "ordered": false,
+      "allowedToolSets": [
+        [
+          {
+            "name": "getRecentRuns",
+            "arguments": {
+              "startDate": "2026-02-01",
+              "endDate": "2026-02-28",
+              "limit": 1
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "id": "pb-five",
+      "question": "查询我的 FIVE_K 标准距离整次活动近似 PB。",
+      "ordered": false,
+      "allowedToolSets": [
+        [
+          {
+            "name": "getPersonalBest",
+            "arguments": {
+              "distanceType": "FIVE_K"
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "id": "pb-ten",
+      "question": "查询我的 TEN_K 标准距离整次活动近似 PB。",
+      "ordered": false,
+      "allowedToolSets": [
+        [
+          {
+            "name": "getPersonalBest",
+            "arguments": {
+              "distanceType": "TEN_K"
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "id": "pb-half",
+      "question": "查询我的 HALF_MARATHON 标准距离整次活动近似 PB。",
+      "ordered": false,
+      "allowedToolSets": [
+        [
+          {
+            "name": "getPersonalBest",
+            "arguments": {
+              "distanceType": "HALF_MARATHON"
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "id": "pb-marathon",
+      "question": "查询我的 MARATHON 标准距离整次活动近似 PB。",
+      "ordered": false,
+      "allowedToolSets": [
+        [
+          {
+            "name": "getPersonalBest",
+            "arguments": {
+              "distanceType": "MARATHON"
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "id": "no-tool",
+      "question": "什么是节奏跑？",
+      "ordered": false,
+      "allowedToolSets": [
+        []
+      ]
+    },
+    {
+      "id": "compare-periods",
+      "question": "比较我在 2026-01-01 到 2026-01-31 和 2026-02-01 到 2026-02-28 两个区间的跑步汇总。",
+      "ordered": false,
+      "allowedToolSets": [
+        [
+          {
+            "name": "getRunningSummary",
+            "arguments": {
+              "startDate": "2026-01-01",
+              "endDate": "2026-01-31"
+            }
+          },
+          {
+            "name": "getRunningSummary",
+            "arguments": {
+              "startDate": "2026-02-01",
+              "endDate": "2026-02-28"
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "id": "summary-and-recent",
+      "question": "先比较我在 2026-01-01 到 2026-01-31 与 2026-02-01 到 2026-02-28 的汇总，然后列出 2026-02-01 到 2026-02-28 最近 3 次跑步。",
+      "ordered": true,
+      "allowedToolSets": [
+        [
+          {
+            "name": "getRunningSummary",
+            "arguments": {
+              "startDate": "2026-01-01",
+              "endDate": "2026-01-31"
+            }
+          },
+          {
+            "name": "getRunningSummary",
+            "arguments": {
+              "startDate": "2026-02-01",
+              "endDate": "2026-02-28"
+            }
+          },
+          {
+            "name": "getRecentRuns",
+            "arguments": {
+              "startDate": "2026-02-01",
+              "endDate": "2026-02-28",
+              "limit": 3
+            }
+          }
+        ]
+      ]
+    }
+  ]
+}

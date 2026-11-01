@@ -1,0 +1,161 @@
+{
+  "datasetVersion": "v1",
+  "cases": [
+    {
+      "id": "summary-q1",
+      "calls": [
+        {
+          "name": "getRunningSummary",
+          "arguments": {
+            "startDate": "2026-01-01",
+            "endDate": "2026-03-31"
+          }
+        }
+      ]
+    },
+    {
+      "id": "summary-january",
+      "calls": [
+        {
+          "name": "getRunningSummary",
+          "arguments": {
+            "startDate": "2026-01-01",
+            "endDate": "2026-01-31"
+          }
+        }
+      ]
+    },
+    {
+      "id": "summary-february",
+      "calls": [
+        {
+          "name": "getRunningSummary",
+          "arguments": {
+            "startDate": "2026-02-01",
+            "endDate": "2026-02-28"
+          }
+        }
+      ]
+    },
+    {
+      "id": "recent-three",
+      "calls": [
+        {
+          "name": "getRecentRuns",
+          "arguments": {
+            "startDate": "2026-01-01",
+            "endDate": "2026-03-31",
+            "limit": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "recent-one",
+      "calls": [
+        {
+          "name": "getRecentRuns",
+          "arguments": {
+            "startDate": "2026-02-01",
+            "endDate": "2026-02-28",
+            "limit": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "pb-five",
+      "calls": [
+        {
+          "name": "getPersonalBest",
+          "arguments": {
+            "distanceType": "FIVE_K"
+          }
+        }
+      ]
+    },
+    {
+      "id": "pb-ten",
+      "calls": [
+        {
+          "name": "getPersonalBest",
+          "arguments": {
+            "distanceType": "TEN_K"
+          }
+        }
+      ]
+    },
+    {
+      "id": "pb-half",
+      "calls": [
+        {
+          "name": "getPersonalBest",
+          "arguments": {
+            "distanceType": "HALF_MARATHON"
+          }
+        }
+      ]
+    },
+    {
+      "id": "pb-marathon",
+      "calls": [
+        {
+          "name": "getPersonalBest",
+          "arguments": {
+            "distanceType": "MARATHON"
+          }
+        }
+      ]
+    },
+    {
+      "id": "no-tool",
+      "calls": []
+    },
+    {
+      "id": "compare-periods",
+      "calls": [
+        {
+          "name": "getRunningSummary",
+          "arguments": {
+            "startDate": "2026-01-01",
+            "endDate": "2026-01-31"
+          }
+        },
+        {
+          "name": "getRunningSummary",
+          "arguments": {
+            "startDate": "2026-02-01",
+            "endDate": "2026-02-28"
+          }
+        }
+      ]
+    },
+    {
+      "id": "summary-and-recent",
+      "calls": [
+        {
+          "name": "getRunningSummary",
+          "arguments": {
+            "startDate": "2026-01-01",
+            "endDate": "2026-01-31"
+          }
+        },
+        {
+          "name": "getRunningSummary",
+          "arguments": {
+            "startDate": "2026-02-01",
+            "endDate": "2026-02-28"
+          }
+        },
+        {
+          "name": "getRecentRuns",
+          "arguments": {
+            "startDate": "2026-02-01",
+            "endDate": "2026-02-28",
+            "limit": 3
+          }
+        }
+      ]
+    }
+  ]
+}

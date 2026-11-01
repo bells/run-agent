@@ -54,7 +54,7 @@ class KnowledgeQaServiceTest {
         @SuppressWarnings("unchecked") ObjectProvider<KnowledgeIndexService> provider = mock(ObjectProvider.class);
         ChatModel chat = mock(ChatModel.class);
         when(chat.getOptions()).thenReturn(org.springframework.ai.chat.prompt.ChatOptions.builder().build());
-        var qa = new KnowledgeQaService(ChatClient.builder(chat), new KnowledgeSearchService(properties, provider),
+        var qa = new KnowledgeQaService(ChatClient.builder(chat), new KnowledgeSearchService(properties, provider, cn.watsonzhu.runagent.observability.ObservationTestSupport.noop()),
                 new ClassPathResource("prompts/running-knowledge-system.txt"));
         assertThatThrownBy(() -> qa.ask("轻松训练"))
                 .isInstanceOf(KnowledgeBaseUnavailableException.class).hasMessage("Knowledge base is not enabled.");
@@ -102,6 +102,6 @@ class KnowledgeQaServiceTest {
         var index = mock(KnowledgeIndexService.class);
         when(provider.getIfAvailable()).thenReturn(index);
         when(index.store()).thenReturn(store);
-        return new KnowledgeSearchService(RagTestSupport.properties(directory, directory.resolve("store.json"), false), provider);
+        return new KnowledgeSearchService(RagTestSupport.properties(directory, directory.resolve("store.json"), false), provider, cn.watsonzhu.runagent.observability.ObservationTestSupport.noop());
     }
 }

@@ -1,4 +1,4 @@
-# RunAgent v0.7
+# RunAgent v0.8
 
 RunAgent 是 Watson 的个人跑步 AI 后端与 Java / Spring AI 学习项目。它与 [Watson Running](https://github.com/bells/watson-running) 独立构建和部署。
 
@@ -30,6 +30,27 @@ Client conversationId → POST /api/agent → RunAgentService
 ```
 
 比较两个时间段时，模型应分别调用 `getRunningSummary` 两次；需要个别训练时再调用 `getRecentRuns`。不提供 `compareRunningPeriods`，以便观察根据前一 Observation 作出的下一步决定。完整机制见 [Agent Loop](docs/agent-loop.md)；v0.2 的底层协议学习实验见 [Tool Calling Flow](docs/tool-calling-flow.md)。
+
+## Evaluation / Observability：v0.8
+
+Evaluation 判断“系统做得对不对”，Observability 解释“执行中发生了什么”。本阶段增加版本化合成数据集、独立 JavaExec 评估 Runner、Tool Selection/Arguments、RAG Recall@K/Precision@K/MRR、Workflow Route 与 JSON/Markdown 报告；运行时接入 Actuator、Micrometer、Prometheus、OpenTelemetry/OTLP 和最小业务 Observation。
+
+```bash
+./gradlew test
+./gradlew build
+./gradlew evaluation
+./gradlew liveEvaluation  # 默认关闭；不是 build 的依赖
+```
+
+离线评估报告在 `build/reports/run-agent-evaluation/`。脚本模型下的工具契约回归不等于真实模型选择质量；真实 `liveEvaluation` 必须显式设置 `LIVE_EVALUATION_ENABLED=true` 和 `AI_GATEWAY_*`，仍只使用合成 Running 数据。Judge 默认关闭，仅属于评估管线；无在线 Judge、评估 REST API 或持久化平台。
+
+```bash
+./gradlew bootRun --args='--spring.profiles.active=local,observability --server.address=127.0.0.1'
+```
+
+默认不外发 Trace/OTLP Metrics/Logs，Management 只在回环9091提供 health；observability profile 才开放 metrics/prometheus 并启用本地 Trace。Prompt、Completion、工具内容与检索正文采集关闭，另清洗 VectorStore query 属性和 AI error exception events。Local stack 使用固定版本 Jaeger + Prometheus；Docker host networking 和回环 scrape 的前提见文档，不开放任意 Management 地址。
+
+详见 [Evaluation 学习手册](docs/evaluation.md)、[Observability 学习手册](docs/observability.md) 和 [v0.8 实测记录](docs/v0.8-verification.md)。v0.9 Multi-Agent 仍未实现。
 
 ## Workflow / LangGraph4j：v0.7
 
@@ -73,7 +94,7 @@ curl -X POST http://localhost:8080/api/workflows/training-analysis \
 
 Running 节点按照 `RUNNING_TOOL_PROVIDER` 使用 local service 或已经通过白名单过滤的 Running MCP callback；MCP 模式不会读取 Host 本地文件。Knowledge 节点复用 `KnowledgeSearchService` 的 TopK/threshold/索引与安全日志，须开启 `RAG_ENABLED=true` 并准备可用索引。Analysis 只解释已收集证据；不会自行选 Tool、重新检索或访问 Conversation Memory。
 
-默认 `WORKFLOW_TIMEOUT=60s`，是应用 deadline 和尽力取消。必需证据不可用、零召回、模型失败或空答复会安全失败，不降级为模型常识。Weather 继续属于 Agent 的动态能力；当前不做 Weather Workflow、Checkpoint/Saver、Retry、Streaming/Resume、并行 Graph、Evaluation 或 Multi-Agent。完整概念见 [Workflow 学习手册](docs/workflow.md)，实测边界见 [v0.7 验证](docs/v0.7-verification.md)。
+默认 `WORKFLOW_TIMEOUT=60s`，是应用 deadline 和尽力取消。必需证据不可用、零召回、模型失败或空答复会安全失败，不降级为模型常识。Weather 继续属于 Agent 的动态能力；当前不做 Weather Workflow、Checkpoint/Saver、Retry、Streaming/Resume、并行 Graph 或 Multi-Agent。完整概念见 [Workflow 学习手册](docs/workflow.md)，实测边界见 [v0.7 验证](docs/v0.7-verification.md)。
 
 ## MCP：v0.6
 
@@ -274,6 +295,6 @@ curl -X POST http://localhost:8080/api/knowledge/search \
 | v0.4 | Memory |
 | v0.5 | RAG |
 | v0.6 | MCP |
-| v0.7 | Workflow / LangGraph4j（当前） |
-| v0.8 | Evaluation / Observability（未实现） |
+| v0.7 | Workflow / LangGraph4j |
+| v0.8 | Evaluation / Observability（当前） |
 | v0.9 | Multi-Agent（未实现） |

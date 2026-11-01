@@ -18,6 +18,7 @@ import cn.watsonzhu.runagent.config.RagProperties;
 import cn.watsonzhu.runagent.exception.KnowledgeBaseUnavailableException;
 
 public class KnowledgeIndexService {
+    private final io.micrometer.observation.ObservationRegistry observations;
     private static final Logger log = LoggerFactory.getLogger(KnowledgeIndexService.class);
     private final RagProperties properties;
     private final EmbeddingModel embeddingModel;
@@ -27,7 +28,8 @@ public class KnowledgeIndexService {
     private volatile VectorStore readyStore;
 
     public KnowledgeIndexService(RagProperties properties, EmbeddingModel embeddingModel,
-            KnowledgeDocumentLoader loader, String modelName, String endpoint) {
+            KnowledgeDocumentLoader loader, String modelName, String endpoint, io.micrometer.observation.ObservationRegistry observations) {
+        this.observations = observations;
         this.properties = properties;
         this.embeddingModel = embeddingModel;
         this.loader = loader;
@@ -41,7 +43,8 @@ public class KnowledgeIndexService {
         try {
             Path path = Path.of(properties.vectorStorePath()).toAbsolutePath();
             Path manifest = Path.of(path + ".manifest");
-            SimpleVectorStore candidate = SimpleVectorStore.builder(embeddingModel).build();
+            SimpleVectorStore candidate = SimpleVectorStore.builder(embeddingModel).observationRegistry(observations)
+                    .customObservationConvention(new cn.watsonzhu.runagent.observability.PrivacySafeVectorStoreConvention()).build();
             if (Files.exists(path) && !properties.reindex()) {
                 Properties saved = new Properties();
                 try (var input = Files.newInputStream(manifest)) { saved.load(input); }

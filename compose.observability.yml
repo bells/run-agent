@@ -1,0 +1,18 @@
+# Linux or Docker Desktop 4.34+ with host networking enabled.
+# Host networking preserves access to RunAgent's loopback-only management listener.
+services:
+  jaeger:
+    image: jaegertracing/jaeger:2.22.0
+    network_mode: host
+    command: ["--config", "/etc/jaeger/config.yml"]
+    volumes:
+      - ./observability/jaeger.yml:/etc/jaeger/config.yml:ro
+  prometheus:
+    image: prom/prometheus:v3.15.1
+    network_mode: host
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --web.listen-address=127.0.0.1:9090
+      - --storage.tsdb.retention.time=1d
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro

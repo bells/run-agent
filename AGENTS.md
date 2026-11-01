@@ -22,7 +22,7 @@ Java 21 / Spring Boot / Spring AI
 
 ## 当前阶段
 
-当前版本是 v0.7（0.7.0-SNAPSHOT），已经实现：
+当前版本是 v0.8（0.8.0-SNAPSHOT），已经实现：
 
 - `POST /api/chat`：普通 Chat。
 - `GET /api/chat/stream`：UTF-8 SSE Streaming Chat。
@@ -37,7 +37,9 @@ Java 21 / Spring Boot / Spring AI
 
 - v0.7 新增 `POST /api/workflows/training-analysis`，使用 LangGraph4j Core 1.8.27 StateGraph，五节点与显式 mode Conditional Edge；复用 local/MCP Running Gateway 和现有 RAG 检索。无状态，Analysis 无 Tools、Memory 或 QuestionAnswerAdvisor。详见 `docs/workflow.md`。
 
-v0.7 不实现自定义 Agent Loop、长期 Memory、数据库、Hybrid Search、Reranker、RAG Tool、Agentic RAG、Checkpoint Persistence、Workflow Streaming/Resume/并行、Retry Graph、Multi-Agent、复杂认证或完整 Observability。v0.8 Evaluation / Observability 和 v0.9 Multi-Agent 仍未实现。后续能力必须按版本目标逐步加入。
+- v0.8 新增独立 `evaluation` / 显式 opt-in `liveEvaluation`、版本化合成 Dataset 与安全报告；Actuator/Micrometer/Prometheus/OpenTelemetry、Agent/Workflow/Node/RAG 业务观测。详见 `docs/evaluation.md`、`docs/observability.md`。
+
+当前不实现自定义 Agent Loop、长期 Memory、数据库、Hybrid Search、Reranker、RAG Tool、Agentic RAG、Checkpoint Persistence、Workflow Streaming/Resume/并行、Retry Graph、Multi-Agent、复杂认证或生产 Evaluation/Observability 平台。v0.9 Multi-Agent 仍未实现。后续能力必须按版本目标逐步加入。
 
 ## 已验证技术基线
 
@@ -139,6 +141,18 @@ Controller -> RunAgentService -> ChatClient -> LLM
 - Graph/MCP/LLM 阻塞调用在 boundedElastic 执行，WORKFLOW_TIMEOUT 默认 60s；只是 deadline + best-effort cancellation。每订阅独立的 WorkflowExecutionControl 通过本地 RunnableConfig metadata 传递，节点前后检查统一 deadline/取消标记，即使底层吞掉 interrupt 也不启动后续节点。
 - Trace 不复用 AgentExecutionTrace；只记录 workflowExecutionId、node、phase/status、latencyMs。框架 Graph 日志关闭，不能打开后泄露 State、正文或 Prompt。
 
+## Evaluation / Observability 边界
+
+- 普通 test/build 不执行 live、Judge 或私有 golden；evaluation 是 test runtime classpath 上的独立 JavaExec，不打包进应用。
+- Committed fixtures 只能是合成数据，固定日期，包含 datasetVersion/checksum。脚本模型结果标 SCRIPTED_MODEL_CONTRACT，不能当真实模型选择质量。
+- live 仅 `LIVE_EVALUATION_ENABLED=true` 且显式 AI_GATEWAY_* 时运行；Judge 仅 `EVAL_JUDGE_ENABLED=true`。私有 golden 仅本机检索，不发给 Target/Judge。
+- 报告只包含安全 case ID、指标、身份和 reasonCode，不存 Prompt/Answer/Chunk/工具参数/结果。无标签为 UNJUDGED；Precision@K 分母固定 K；重复 Tool/文档必须正确处理。
+- 内置 AI 观测优先；自定义统一 runagent.*，executionId/conversationId/queryId/问题/地点/书页/参数不得作 Meter tag。Tool count 是每请求一次最终值，不是每次 Tool value=1。
+- 默认网络 Trace/OTLP Metrics/Logs export 关闭；observability profile 的 Management 仍只绑定127.0.0.1，白名单 health/info/metrics/prometheus。
+- 必须保留敏感采集 false 配置、PrivacySafeVectorStoreConvention 和先于 tracing group 的 AiObservationErrorSanitizer；log flags 不能防止 query 属性或 exception event 泄露。
+- Analysis 独立 ChatClient 注入 registry，仍无 Tools/Memory/QA Advisor；索引只增加 registry/convention，不改变 fingerprint 或要求 Reindex。
+- 真实供应商/Jaeger/Prometheus 未运行时明确说明；不以 Context 或 Bean 存在代替端到端验收。v0.9 Multi-Agent 仍不在范围。
+
 ## 配置与安全
 
 - 模型通过 Spring AI OpenAI Chat 客户端连接 OpenAI 兼容端点；`AI_GATEWAY_BASE_URL`、`AI_GATEWAY_API_KEY`、`AI_GATEWAY_MODEL` 在启动时选择 DeepSeek、OpenRouter 或本地 Ollama。旧 `DEEPSEEK_*` 和本地 profile 中 `spring.ai.deepseek.*` 仅作为过渡回退。
@@ -170,8 +184,8 @@ v0.3 Agent Loop
 v0.4 Memory
 v0.5 RAG
 v0.6 MCP
-v0.7 Workflow / LangGraph4j (current)
-v0.8 Evaluation / Observability
+v0.7 Workflow / LangGraph4j
+v0.8 Evaluation / Observability (current)
 v0.9 Multi-Agent
 ```
 

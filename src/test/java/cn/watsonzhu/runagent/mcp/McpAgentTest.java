@@ -83,7 +83,7 @@ class McpAgentTest {
                 ToolCallingAdvisor.builder().toolCallingManager(manager));
         var resource = new ByteArrayResource("Test prompt".getBytes(StandardCharsets.UTF_8));
         return new RunAgentService(builder, new PromptCatalog(resource, resource), tools,
-                MessageWindowChatMemory.builder().maxMessages(20).build());
+                MessageWindowChatMemory.builder().maxMessages(20).build(), cn.watsonzhu.runagent.observability.ObservationTestSupport.noop());
     }
     static ChatResponse tool(String name, String args) {
         return new ChatResponse(List.of(new Generation(AssistantMessage.builder().content("")

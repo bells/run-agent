@@ -1,0 +1,47 @@
+{
+  "datasetVersion": "v1",
+  "activities": [
+    {
+      "run_id": 1,
+      "type": "Run",
+      "distance": 5000,
+      "moving_time": "0:30:00",
+      "start_date_local": "2026-01-05 08:00:00"
+    },
+    {
+      "run_id": 2,
+      "type": "Run",
+      "distance": 10000,
+      "moving_time": "0:55:00",
+      "start_date_local": "2026-01-20 08:00:00"
+    },
+    {
+      "run_id": 3,
+      "type": "Run",
+      "distance": 5000,
+      "moving_time": "0:25:00",
+      "start_date_local": "2026-02-02 08:00:00"
+    },
+    {
+      "run_id": 4,
+      "type": "Run",
+      "distance": 21097.5,
+      "moving_time": "2:00:00",
+      "start_date_local": "2026-02-22 08:00:00"
+    },
+    {
+      "run_id": 5,
+      "type": "Run",
+      "distance": 42195,
+      "moving_time": "4:00:00",
+      "start_date_local": "2026-03-15 08:00:00"
+    },
+    {
+      "run_id": 6,
+      "type": "Ride",
+      "distance": 100000,
+      "moving_time": "3:00:00",
+      "start_date_local": "2026-03-16 08:00:00"
+    }
+  ]
+}

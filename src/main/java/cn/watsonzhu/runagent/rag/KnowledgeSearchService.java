@@ -1,6 +1,7 @@
 package cn.watsonzhu.runagent.rag;
 
 import java.util.List;
+import cn.watsonzhu.runagent.observability.RunAgentObservation;
 import java.util.UUID;
 import cn.watsonzhu.runagent.config.RagProperties;
 import cn.watsonzhu.runagent.exception.KnowledgeBaseUnavailableException;
@@ -18,10 +19,12 @@ import org.springframework.stereotype.Service;
 @Service
 public class KnowledgeSearchService {
     private static final Logger log = LoggerFactory.getLogger(KnowledgeSearchService.class);
+    private final RunAgentObservation observations;
     private final RagProperties properties;
     private final ObjectProvider<KnowledgeIndexService> index;
 
-    public KnowledgeSearchService(RagProperties properties, ObjectProvider<KnowledgeIndexService> index) {
+    public KnowledgeSearchService(RagProperties properties, ObjectProvider<KnowledgeIndexService> index, RunAgentObservation observations) {
+        this.observations = observations;
         this.properties = properties;
         this.index = index;
     }
@@ -47,9 +50,15 @@ public class KnowledgeSearchService {
     }
 
     private List<Document> retrieve(String queryId, SearchRequest request) {
-        if (!properties.enabled()) throw new KnowledgeBaseUnavailableException("Knowledge base is not enabled.");
+        if (!properties.enabled()) {
+            observations.ragOutcome("unavailable");
+            throw new KnowledgeBaseUnavailableException("Knowledge base is not enabled.");
+        }
         var service = index.getIfAvailable();
-        if (service == null) throw new KnowledgeBaseUnavailableException("Knowledge index is not available.");
+        if (service == null) {
+            observations.ragOutcome("unavailable");
+            throw new KnowledgeBaseUnavailableException("Knowledge index is not available.");
+        }
         long started = System.nanoTime();
         try {
             List<Document> matches = service.store().similaritySearch(request);
@@ -61,8 +70,10 @@ public class KnowledgeSearchService {
                         i + 1, doc.getScore(), metadata(doc, "sourceTitle"), metadata(doc, "pageNumber"),
                         metadata(doc, "chapter"), doc.getId());
             }
+            observations.ragMatches(matches.size());
             return matches;
         } catch (RuntimeException exception) {
+            observations.ragOutcome(exception instanceof KnowledgeBaseUnavailableException ? "unavailable" : "error");
             log.warn("rag queryId={} phase=RETRIEVAL_FAILED latencyMs={}", queryId, KnowledgeIndexService.elapsed(started));
             throw new KnowledgeBaseUnavailableException("Knowledge retrieval is temporarily unavailable.");
         }

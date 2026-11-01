@@ -1,0 +1,49 @@
+{
+  "datasetVersion": "v1",
+  "cases": [
+    {
+      "id": "rag-easy",
+      "question": "轻松跑的作用是什么？",
+      "relevantDocumentIds": [
+        "easy-1",
+        "easy-2"
+      ],
+      "k": 2,
+      "expectedNoContext": false,
+      "minRecall": 1.0,
+      "minReciprocalRank": 1.0
+    },
+    {
+      "id": "rag-threshold",
+      "question": "阈值训练主要改善什么能力？",
+      "relevantDocumentIds": [
+        "threshold-1",
+        "threshold-2"
+      ],
+      "k": 2,
+      "expectedNoContext": false,
+      "minRecall": 1.0,
+      "minReciprocalRank": 1.0
+    },
+    {
+      "id": "rag-long",
+      "question": "长距离训练如何增加持续时间？",
+      "relevantDocumentIds": [
+        "long-1"
+      ],
+      "k": 2,
+      "expectedNoContext": false,
+      "minRecall": 1.0,
+      "minReciprocalRank": 1.0
+    },
+    {
+      "id": "rag-no-context",
+      "question": "量子纠缠是什么？",
+      "relevantDocumentIds": [],
+      "k": 2,
+      "expectedNoContext": true,
+      "minRecall": 0,
+      "minReciprocalRank": 0
+    }
+  ]
+}

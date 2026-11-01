@@ -202,8 +202,8 @@ class TrainingAnalysisWorkflowTest {
         var resource = new ClassPathResource("prompts/run-agent-system.txt");
         var prompts = new PromptCatalog(resource, resource);
         return new TrainingAnalysisWorkflow(new ValidateInputNode(), new RunningDataNode(running),
-                new KnowledgeRetrievalNode(search), new AnalysisNode(chat, prompts, new TrainingAnalysisContextBuilder()),
-                new ValidateOutputNode(), new WorkflowProperties(timeout));
+                new KnowledgeRetrievalNode(search), new AnalysisNode(chat, prompts, new TrainingAnalysisContextBuilder(), io.micrometer.observation.ObservationRegistry.NOOP),
+                new ValidateOutputNode(), new WorkflowProperties(timeout), cn.watsonzhu.runagent.observability.ObservationTestSupport.noop());
     }
 
     private TrainingAnalysisRequest request(WorkflowMode mode) {

@@ -1,7 +1,21 @@
 spring:
   application:
     name: run-agent
+  reactor:
+    context-propagation: auto
   ai:
+    chat:
+      client:
+        observations:
+          log-prompt: false
+          log-completion: false
+      observations:
+        log-prompt: false
+        log-completion: false
+        include-error-logging: false
+    vectorstore:
+      observations:
+        log-query-response: false
     mcp:
       client:
         enabled: false
@@ -18,6 +32,8 @@ spring:
       embedding:
         model: ${RAG_EMBEDDING_MODEL:bge-m3}
     tools:
+      observations:
+        include-content: false
       limits:
         max-calls-per-tool-default: ${AGENT_MAX_CALLS_PER_TOOL:4}
         max-total-tool-calls: ${AGENT_MAX_TOTAL_TOOL_CALLS:8}
@@ -73,3 +89,26 @@ logging:
     io.modelcontextprotocol: OFF
     # Graph internals can log complete state and node updates, including private evidence.
     org.bsc.langgraph4j: OFF
+
+# No authentication is installed: management stays on a separate loopback listener.
+management:
+  otlp:
+    metrics:
+      export:
+        enabled: false
+  logging:
+    export:
+      enabled: false
+  server:
+    address: 127.0.0.1
+    port: ${MANAGEMENT_PORT:9091}
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+  tracing:
+    export:
+      enabled: false

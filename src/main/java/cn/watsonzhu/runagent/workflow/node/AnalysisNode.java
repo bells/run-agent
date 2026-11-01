@@ -1,6 +1,7 @@
 package cn.watsonzhu.runagent.workflow.node;
 
 import java.util.Map;
+import io.micrometer.observation.ObservationRegistry;
 import cn.watsonzhu.runagent.exception.WorkflowException;
 import cn.watsonzhu.runagent.prompt.PromptCatalog;
 import cn.watsonzhu.runagent.workflow.TrainingAnalysisContextBuilder;
@@ -19,9 +20,9 @@ public class AnalysisNode implements NodeAction<TrainingAnalysisState> {
     private final PromptCatalog prompts;
     private final TrainingAnalysisContextBuilder context;
 
-    public AnalysisNode(ChatModel model, PromptCatalog prompts, TrainingAnalysisContextBuilder context) {
-        // Building directly from ChatModel avoids shared builder defaults/advisors used by Agent or QA.
-        this.client = ChatClient.builder(model).build();
+    public AnalysisNode(ChatModel model, PromptCatalog prompts, TrainingAnalysisContextBuilder context, ObservationRegistry observations) {
+        // Explicit registry preserves observability without inheriting Agent/QA tools or advisors.
+        this.client = ChatClient.builder(model, observations, null, null).build();
         this.prompts = prompts;
         this.context = context;
     }

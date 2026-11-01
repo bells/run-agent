@@ -1,0 +1,7 @@
+global:
+  scrape_interval: 15s
+scrape_configs:
+  - job_name: run-agent
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["127.0.0.1:9091"]

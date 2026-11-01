@@ -65,6 +65,11 @@ public class ApiExceptionHandler {
         return response(HttpStatus.SERVICE_UNAVAILABLE, "KNOWLEDGE_UNAVAILABLE", exception.getMessage(), exchange);
     }
 
+    @ExceptionHandler(org.springframework.web.reactive.resource.NoResourceFoundException.class)
+    public ResponseEntity<ApiError> handleNotFound(ServerWebExchange exchange) {
+        return response(HttpStatus.NOT_FOUND, "NOT_FOUND", "Resource not found", exchange);
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiError> handleUnexpected(Exception exception, ServerWebExchange exchange) {
         log.error("Unexpected request failure", exception);

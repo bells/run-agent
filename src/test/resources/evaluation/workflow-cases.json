@@ -1,0 +1,45 @@
+{
+  "datasetVersion": "v1",
+  "cases": [
+    {
+      "id": "workflow-running-only",
+      "mode": "RUNNING_ONLY",
+      "question": "分析轻松跑训练安排。",
+      "startDate": "2026-01-01",
+      "endDate": "2026-03-31",
+      "expectedNodes": [
+        "validateInput",
+        "fetchRunningData",
+        "analyze",
+        "validateOutput"
+      ]
+    },
+    {
+      "id": "workflow-knowledge-only",
+      "mode": "KNOWLEDGE_ONLY",
+      "question": "分析轻松跑训练安排。",
+      "startDate": null,
+      "endDate": null,
+      "expectedNodes": [
+        "validateInput",
+        "retrieveKnowledge",
+        "analyze",
+        "validateOutput"
+      ]
+    },
+    {
+      "id": "workflow-combined",
+      "mode": "COMBINED",
+      "question": "分析轻松跑训练安排。",
+      "startDate": "2026-01-01",
+      "endDate": "2026-03-31",
+      "expectedNodes": [
+        "validateInput",
+        "fetchRunningData",
+        "retrieveKnowledge",
+        "analyze",
+        "validateOutput"
+      ]
+    }
+  ]
+}

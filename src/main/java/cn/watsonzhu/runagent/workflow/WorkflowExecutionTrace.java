@@ -1,6 +1,7 @@
 package cn.watsonzhu.runagent.workflow;
 
 import java.time.Duration;
+import cn.watsonzhu.runagent.observability.RunAgentObservation;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -14,7 +15,12 @@ public final class WorkflowExecutionTrace {
     private WorkflowExecutionTrace() {}
 
     public static Map<String, Object> run(TrainingAnalysisState state, WorkflowExecutionControl control,
-                                          String node, Supplier<Map<String, Object>> action) {
+                                          String node, RunAgentObservation observations, Supplier<Map<String, Object>> action) {
+        return observations.node(state.executionId(), node, () -> logged(state, control, node, action));
+    }
+
+    private static Map<String, Object> logged(TrainingAnalysisState state, WorkflowExecutionControl control,
+                                              String node, Supplier<Map<String, Object>> action) {
         long started = System.nanoTime();
         log.info("workflowExecutionId={} node={} phase=STARTED", state.executionId(), node);
         String status = "FAILED";

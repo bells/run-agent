@@ -48,7 +48,7 @@ Evaluation 判断“系统做得对不对”，Observability 解释“执行中�
 ./gradlew bootRun --args='--spring.profiles.active=local,observability --server.address=127.0.0.1'
 ```
 
-默认不外发 Trace/OTLP Metrics/Logs，Management 只在回环9091提供 health；observability profile 才开放 metrics/prometheus 并启用本地 Trace。Prompt、Completion、工具内容与检索正文采集关闭，另清洗 VectorStore query 属性和 AI error exception events。Local stack 使用固定版本 Jaeger + Prometheus；Docker host networking 和回环 scrape 的前提见文档，不开放任意 Management 地址。
+默认不外发 Trace/OTLP Metrics/Logs，Management 只在回环9091提供 health；observability profile 才开放 metrics/prometheus 并启用本地 Trace。Prompt、Completion、工具内容与检索正文采集关闭，另清洗 VectorStore query 属性和 AI error exception events。Local stack 使用固定版本 Jaeger + Prometheus；Compose 通过宿主机回环端口发布 UI/OTLP，Prometheus 经 host.docker.internal 抓取本机 Management，配置与实测见观测文档。
 
 详见 [Evaluation 学习手册](docs/evaluation.md)、[Observability 学习手册](docs/observability.md) 和 [v0.8 实测记录](docs/v0.8-verification.md)。v0.9 Multi-Agent 仍未实现。
 

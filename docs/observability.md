@@ -98,15 +98,11 @@ docker compose -f compose.observability.yml up -d
 docker compose -f compose.observability.yml down
 ```
 
-此 compose 使用 host networking，适用于 Linux 或已启用 host networking 的 Docker Desktop 4.34+。所有进程监听显式回环：Jaeger OTLP HTTP 4318、Query HTTP 16686/Query gRPC 16685；Prometheus UI 9090。Jaeger 使用有限内存存储，Prometheus 保留1天数据，均为学习环境。
+此 compose 使用 Docker 桥接网络和显式端口发布，适用于 Docker Desktop。宿主机监听 `127.0.0.1:16686`（Jaeger UI）、`127.0.0.1:4318`（OTLP HTTP）和 `127.0.0.1:9090`（Prometheus UI）。容器内的 HTTP 服务监听 `0.0.0.0`，Compose 将访问入口限定为宿主机回环地址。Jaeger 使用有限内存存储，Prometheus 保留1天数据，均为学习环境。
 
-不能默认声称 `host.docker.internal:9091` 可以访问只绑定127.0.0.1的 Host。Host networking 的目的正是保留回环边界；Docker Desktop 若未启用相应支持，请先在设置中启用，或使用本机 Prometheus：
+Prometheus 通过 `host.docker.internal:9091/actuator/prometheus` 访问宿主机 RunAgent。2026-11-07 已在 Docker Desktop 4.24.2 上实测，容器可以访问当前绑定回环的 Management 服务。Linux Docker 的宿主机解析和回环可达性需要按环境配置，也可以在宿主机运行 Prometheus，将抓取目标设为 `127.0.0.1:9091`。
 
-```bash
-prometheus --config.file=observability/prometheus.yml --web.listen-address=127.0.0.1:9090
-```
-
-也可以在本机安装同版本 Jaeger，使用 `jaeger --config observability/jaeger.yml`。原生工具需操作者自行准备，本任务不会安装或启动系统守护进程。Java 代码不含 macOS 特判，不通过开放 Management 接口解决网络问题。
+`observability/jaeger.yml` 使用容器内部监听地址。原生运行 Jaeger 时，应将其 HTTP 监听配置为宿主机回环地址。
 
 启动成功后：
 
@@ -115,7 +111,9 @@ prometheus --config.file=observability/prometheus.yml --web.listen-address=127.0
 - [Prometheus UI](http://127.0.0.1:9090)
 - [Jaeger UI](http://127.0.0.1:16686)
 
-本次 Docker daemon 无法连接，**local stack not launched**。Compose 解析成功和官方 schema 核对不等于镜像启动、网络 scrape 或 Jaeger UI 已验收；host networking 端到端连接仍待实际服务环境验证。
+2026-11-07 已实际启动两个容器并确认 Jaeger UI、Prometheus UI 和 OTLP HTTP 接口返回200，Prometheus 当前目标为 up。Docker Desktop 4.24.2 的原 host networking 配置将服务留在 Linux VM 内部，改为桥接端口发布后，宿主机页面访问恢复。用户随后升级到 Docker Desktop 4.98.0，并确认两个页面正常使用。
+
+应用需启用 `observability` profile 并设置 `management.tracing.export.enabled=true` 才会导出 Trace。IDEA 中若先前添加了 `--management.tracing.export.enabled=false`，将它改为 `--management.tracing.export.enabled=true`，重启应用并发起一次请求，然后在 Jaeger 选择 service `run-agent`。
 
 ## 实际 Trace 证据与限制
 

@@ -13,7 +13,8 @@ public final class EvaluationRunner {
     private EvaluationRunner() { }
     public static void main(String[] args) throws Exception {
         var thresholds = new java.util.HashMap<String, Double>();
-        for (String name : List.of("toolSelectionAccuracy", "toolArgumentAccuracy", "workflowRouteAccuracy", "recallAtK", "mrr", "precisionAtK")) {
+        for (String name : List.of("toolSelectionAccuracy", "toolArgumentAccuracy", "workflowRouteAccuracy", "recallAtK", "mrr", "precisionAtK",
+                "multiAgentDelegationAccuracy", "multiAgentCapabilityIsolationAccuracy", "multiAgentCompletionAccuracy")) {
             String configured = System.getProperty("evaluation.threshold." + name);
             if (configured != null) thresholds.put(name, EvaluationMetrics.threshold(configured));
         }
@@ -45,10 +46,12 @@ public final class EvaluationRunner {
                 } catch (RuntimeException e) { results.add(failure(item.id(), Category.WORKFLOW, Evidence.DETERMINISTIC_GRAPH, Reason.EXECUTION_FAILED)); }
             }
             results.add(evaluateCalculation(fixture::runningCalculation));
+            results.addAll(MultiAgentEvaluation.run(fixture));
             var report = EvaluationReportWriter.report(version, "OFFLINE", fixture.identities(), Map.of(), results);
             EvaluationReportWriter.write(output, report, Path.of(".run-agent/evaluation/baseline.json"));
             var gates = new java.util.HashMap<>(Map.of("toolSelectionAccuracy", 1.0, "toolArgumentAccuracy", 1.0, "workflowRouteAccuracy", 1.0,
-                "recallAtK", 1.0, "mrr", 1.0, "precisionAtK", 0.8));
+                "recallAtK", 1.0, "mrr", 1.0, "precisionAtK", 0.8,
+                "multiAgentDelegationAccuracy", 1.0, "multiAgentCapabilityIsolationAccuracy", 1.0, "multiAgentCompletionAccuracy", 1.0));
             thresholds.forEach((key, value) -> {
                 if (!gates.containsKey(key)) throw new IllegalArgumentException("Unknown threshold");
                 gates.put(key, EvaluationMetrics.threshold(value.toString()));

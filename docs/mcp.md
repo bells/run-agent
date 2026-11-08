@@ -194,3 +194,7 @@ MCP的价值是AI Capability的统一发现与调用契约，不是更快，也�
 - [2.0.1 MCP源码包](https://repo.maven.apache.org/maven2/org/springframework/ai/spring-ai-mcp/2.0.1/spring-ai-mcp-2.0.1-sources.jar)
 - [2.0.1 Client自动配置源码包](https://repo.maven.apache.org/maven2/org/springframework/ai/spring-ai-autoconfigure-mcp-client-common/2.0.1/spring-ai-autoconfigure-mcp-client-common-2.0.1-sources.jar)
 - [Weather项目README](https://github.com/cyanheads/open-meteo-mcp-server#readme)
+
+## Weather Server 0.5.0 structuredContent compatibility
+
+2026-11-08真实验证发现，公共Server0.5.0的位置搜索、预报和空气质量将机器可读数据放在structuredContent，content可能只有格式化文本。Spring AI2.0.1的默认SyncMcpToolCallback只返回content。Weather连接现在对官方Provider/Filter已接受的schema增加窄适配，使用同一官方SDK client的类型化CallToolRequest，优先保留structuredContent，旧Server缺省时继续返回content。工具每次只调用一次，CallToolRequest metadata固定为空，无重复发现或手写JSON-RPC。

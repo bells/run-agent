@@ -51,4 +51,21 @@ public class McpConfig {
         var snapshot = callbacks.toArray(ToolCallback[]::new);
         return () -> snapshot.clone();
     }
+
+    @Bean("runningSpecialistTools")
+    ToolCallbackProvider runningSpecialistTools(RunningToolProperties properties, ObjectProvider<RunningTools> local,
+                                                ObjectProvider<McpCatalog> remote) {
+        McpCatalog catalog = remote.getIfAvailable();
+        ToolCallback[] snapshot = "local".equals(properties.provider())
+                ? ToolCallbacks.from(local.getObject())
+                : catalog == null ? new ToolCallback[0] : catalog.getToolCallbacks("running");
+        return () -> snapshot.clone();
+    }
+
+    @Bean("weatherSpecialistTools")
+    ToolCallbackProvider weatherSpecialistTools(ObjectProvider<McpCatalog> remote) {
+        McpCatalog catalog = remote.getIfAvailable();
+        ToolCallback[] snapshot = catalog == null ? new ToolCallback[0] : catalog.getToolCallbacks("weather");
+        return () -> snapshot.clone();
+    }
 }

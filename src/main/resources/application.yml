@@ -39,6 +39,8 @@ spring:
         max-total-tool-calls: ${AGENT_MAX_TOTAL_TOOL_CALLS:8}
         on-limit-exceeded: THROW
     openai:
+      # Keep provider failures bounded; the SDK otherwise retries requests automatically.
+      max-retries: 0
       api-key: ${AI_GATEWAY_API_KEY:${spring.ai.deepseek.api-key:${DEEPSEEK_API_KEY:}}}
       base-url: ${AI_GATEWAY_BASE_URL:${spring.ai.deepseek.base-url:${DEEPSEEK_BASE_URL:https://api.deepseek.com}}}
       chat:
@@ -69,6 +71,11 @@ run-agent:
     timeout: ${AGENT_TIMEOUT:30s}
   workflow:
     timeout: ${WORKFLOW_TIMEOUT:60s}
+  multi-agent:
+    timeout: ${MULTI_AGENT_TIMEOUT:180s}
+    max-delegations: ${MULTI_AGENT_MAX_DELEGATIONS:3}
+    max-report-chars: ${MULTI_AGENT_MAX_REPORT_CHARS:2500}
+    max-task-chars: ${MULTI_AGENT_MAX_TASK_CHARS:2000}
   memory:
     max-messages: ${AGENT_MEMORY_MAX_MESSAGES:20}
   running-data:
@@ -83,6 +90,8 @@ logging:
     org.springframework.ai.ollama: OFF
     # OpenAiChatModel warns with the complete Prompt when the provider returns no choices.
     org.springframework.ai.openai: OFF
+    # Unknown model-supplied tool names can contain copied user/evidence text.
+    org.springframework.ai.model.tool.DefaultToolCallingManager: OFF
     org.apache.tika: OFF
     # Official MCP adapter errors can contain full remote payloads.
     org.springframework.ai.mcp: OFF

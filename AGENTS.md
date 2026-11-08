@@ -22,7 +22,7 @@ Java 21 / Spring Boot / Spring AI
 
 ## 当前阶段
 
-当前版本是 v0.8（0.8.0-SNAPSHOT），已经实现：
+当前版本是 v0.9（0.9.0-SNAPSHOT），已经实现：
 
 - `POST /api/chat`：普通 Chat。
 - `GET /api/chat/stream`：UTF-8 SSE Streaming Chat。
@@ -39,7 +39,9 @@ Java 21 / Spring Boot / Spring AI
 
 - v0.8 新增独立 `evaluation` / 显式 opt-in `liveEvaluation`、版本化合成 Dataset 与安全报告；Actuator/Micrometer/Prometheus/OpenTelemetry、Agent/Workflow/Node/RAG 业务观测。详见 `docs/evaluation.md`、`docs/observability.md`。
 
-当前不实现自定义 Agent Loop、长期 Memory、数据库、Hybrid Search、Reranker、RAG Tool、Agentic RAG、Checkpoint Persistence、Workflow Streaming/Resume/并行、Retry Graph、Multi-Agent、复杂认证或生产 Evaluation/Observability 平台。v0.9 Multi-Agent 仍未实现。后续能力必须按版本目标逐步加入。
+- v0.9 新增 `POST /api/multi-agent/training-advice`，使用有界循环 StateGraph 的 Supervisor / 三个 Specialist / Handoff、能力隔离、压缩报告、失败隔离以及独立 Evaluation / Observation。详见 `docs/multi-agent.md`。
+
+当前不实现自定义 Agent Loop、长期 Memory、数据库、Hybrid Search、Reranker、RAG Tool、Agentic RAG、Checkpoint Persistence、Workflow Streaming/Resume/并行、Retry Graph、复杂认证或生产 Evaluation/Observability 平台。后续能力必须按版本目标逐步加入。
 
 ## 已验证技术基线
 
@@ -137,7 +139,7 @@ Controller -> RunAgentService -> ChatClient -> LLM
 - Running 节点使用当前 provider；local 复用 RunningDataService，mcp 只通过 McpCatalog 已过滤 callback，不创建本地 service，不重新发现，不手写 JSON-RPC。
 - RAG 节点复用 KnowledgeSearchService.retrieveDocuments 和现有 TopK/threshold/索引；不通过 QA Advisor 隐藏检索。关闭、故障或零召回均 fail fast。
 - Analysis 使用独立 ChatClient，不注册 Tools、Memory、QA Advisor，并关闭 Spring AI 2.0.1 ToolCallingAdvisor 自动注册。拒绝模型意外的 Tool Call。
-- 不启用任何 Saver/Checkpoint Persistence、Retry、Resume、并行节点、Weather Workflow、Multi-Agent 或 LLM Judge。
+- 现有 Workflow 不启用 Saver/Checkpoint Persistence、Retry、Resume、并行节点、Weather 或 Multi-Agent 编排、LLM Judge。
 - Graph/MCP/LLM 阻塞调用在 boundedElastic 执行，WORKFLOW_TIMEOUT 默认 60s；只是 deadline + best-effort cancellation。每订阅独立的 WorkflowExecutionControl 通过本地 RunnableConfig metadata 传递，节点前后检查统一 deadline/取消标记，即使底层吞掉 interrupt 也不启动后续节点。
 - Trace 不复用 AgentExecutionTrace；只记录 workflowExecutionId、node、phase/status、latencyMs。框架 Graph 日志关闭，不能打开后泄露 State、正文或 Prompt。
 
@@ -147,11 +149,28 @@ Controller -> RunAgentService -> ChatClient -> LLM
 - Committed fixtures 只能是合成数据，固定日期，包含 datasetVersion/checksum。脚本模型结果标 SCRIPTED_MODEL_CONTRACT，不能当真实模型选择质量。
 - live 仅 `LIVE_EVALUATION_ENABLED=true` 且显式 AI_GATEWAY_* 时运行；Judge 仅 `EVAL_JUDGE_ENABLED=true`。私有 golden 仅本机检索，不发给 Target/Judge。
 - 报告只包含安全 case ID、指标、身份和 reasonCode，不存 Prompt/Answer/Chunk/工具参数/结果。无标签为 UNJUDGED；Precision@K 分母固定 K；重复 Tool/文档必须正确处理。
+- SDK模型请求默认零自动重试（spring.ai.openai.max-retries=0），避免隐藏重试消耗Agent/Workflow/Multi-Agent deadline。
 - 内置 AI 观测优先；自定义统一 runagent.*，executionId/conversationId/queryId/问题/地点/书页/参数不得作 Meter tag。Tool count 是每请求一次最终值，不是每次 Tool value=1。
 - 默认网络 Trace/OTLP Metrics/Logs export 关闭；observability profile 的 Management 仍只绑定127.0.0.1，白名单 health/info/metrics/prometheus。
 - 必须保留敏感采集 false 配置、PrivacySafeVectorStoreConvention 和先于 tracing group 的 AiObservationErrorSanitizer；log flags 不能防止 query 属性或 exception event 泄露。
 - Analysis 独立 ChatClient 注入 registry，仍无 Tools/Memory/QA Advisor；索引只增加 registry/convention，不改变 fingerprint 或要求 Reindex。
-- 真实供应商/Jaeger/Prometheus 未运行时明确说明；不以 Context 或 Bean 存在代替端到端验收。v0.9 Multi-Agent 仍不在范围。
+- 真实供应商/Jaeger/Prometheus 未运行时明确说明；不以 Context 或 Bean 存在代替端到端验收。线上 Multi-Agent 不接入 Judge。
+
+## Multi-Agent 边界
+
+- 独立无状态 endpoint，没有 conversationId、ChatMemory、persistent checkpoint 或跨请求 shared state。
+- Supervisor routing / synthesis 独立 ChatClient，没有 tools、RAG Advisor 或 Memory；record/enum Structured Output 之后再次验证。
+- Running 只接收 Running tools，local/MCP 遵循当前 provider，禁止 Host local fallback。Weather 只接收 weather 连接三项工具。Knowledge 显式 retrieval + 独立无 tools 模型。
+- 每个 Specialist 只接收原问题、自己的子任务和所需 hints/evidence。其他报告只提供给 Supervisor。显式日期/地点优先，并在相应工具参数边界约束。
+- Specialist 固定 edge 返回 Supervisor，不能直接 peer handoff。每个 Specialist 最多尝试一次，失败也标 completed；默认 maxDelegations=3，范围1–3。
+- 达到预算或耗尽可选能力后跳过 Router LLM；至少一个 SUCCESS 才能 synthesis。全部失败返回 MULTI_AGENT_INSUFFICIENT_EVIDENCE。
+- State 只保存 bounded reports，默认2500字符。Raw Running/MCP/Weather JSON、RAG Documents、Prompt 与 ToolContext 不进入 State、HTTP 或 telemetry。
+- Deadline/cancel control 通过本地 RunnableConfig metadata 传递，模型和工具前后检查；timeout 是 best effort，取消后不能启动下一 Agent。
+- Weather Server 的 structuredContent 由 StructuredWeatherToolCallback 保留；复用官方 Provider/Filter 接受的 schema 与 SDK client，一次类型化 CallToolRequest、空 metadata，旧 content 格式仍兼容。禁止退回只取 content 导致坐标证据丢失。
+- Specialist trace 独立于 AgentExecutionTrace。MCP 仍使用 noOp converter 和空委托上下文，本地 MethodToolCallback 只接收固定非空 marker。
+- runagent.multi_agent / specialist 使用固定低基数 outcome/specialist，executionId 仅 high-cardinality；delegations 每请求最终记录一次。
+- Offline Evaluation 标 SCRIPTED_MULTI_AGENT_CONTRACT，使用合成数据、真实循环 Graph 和隔离 clients。不能据此声称真实 Supervisor 质量。
+- 没有 retry、并行 Specialist、peer-to-peer network、动态 Agent、Multi-Agent Memory 或在线 Judge。
 
 ## 配置与安全
 
@@ -185,8 +204,8 @@ v0.4 Memory
 v0.5 RAG
 v0.6 MCP
 v0.7 Workflow / LangGraph4j
-v0.8 Evaluation / Observability (current)
-v0.9 Multi-Agent
+v0.8 Evaluation / Observability
+v0.9 Multi-Agent (current)
 ```
 
 每一阶段都应先确认学习目标和最小可验证闭环，再增加依赖与抽象。

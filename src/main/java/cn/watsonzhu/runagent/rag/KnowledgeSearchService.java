@@ -33,6 +33,11 @@ public class KnowledgeSearchService {
         return SearchRequest.builder().topK(properties.topK()).similarityThreshold(properties.similarityThreshold()).build();
     }
 
+    public boolean isAvailable() {
+        KnowledgeIndexService service = index.getIfAvailable();
+        return properties.enabled() && service != null && service.isAvailable();
+    }
+
     public KnowledgeSearchResponse search(String query) {
         String queryId = UUID.randomUUID().toString();
         List<Document> documents = retrieveDocuments(queryId, query);

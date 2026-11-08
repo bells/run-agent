@@ -1,0 +1,112 @@
+{
+  "datasetVersion": "v1",
+  "cases": [
+    {
+      "startDate": "2026-01-01",
+      "endDate": "2026-01-31",
+      "location": "Synthetic City",
+      "ordered": false,
+      "id": "ma-running",
+      "question": "分析固定一月个人跑步记录。",
+      "expectedAgents": [
+        "RUNNING_ANALYST"
+      ],
+      "expectedSuccessfulAgents": [
+        "RUNNING_ANALYST"
+      ]
+    },
+    {
+      "startDate": "2026-01-01",
+      "endDate": "2026-01-31",
+      "location": "Synthetic City",
+      "ordered": false,
+      "id": "ma-knowledge",
+      "question": "解释轻松跑的恢复原则。",
+      "expectedAgents": [
+        "KNOWLEDGE_COACH"
+      ],
+      "expectedSuccessfulAgents": [
+        "KNOWLEDGE_COACH"
+      ]
+    },
+    {
+      "startDate": "2026-01-01",
+      "endDate": "2026-01-31",
+      "location": "Synthetic City",
+      "ordered": false,
+      "id": "ma-weather",
+      "question": "分析固定地点的模拟天气。",
+      "expectedAgents": [
+        "WEATHER_ADVISOR"
+      ],
+      "expectedSuccessfulAgents": [
+        "WEATHER_ADVISOR"
+      ]
+    },
+    {
+      "startDate": "2026-01-01",
+      "endDate": "2026-01-31",
+      "location": "Synthetic City",
+      "ordered": false,
+      "id": "ma-combined",
+      "question": "结合个人跑步、轻松跑知识和模拟天气给出建议。",
+      "expectedAgents": [
+        "RUNNING_ANALYST",
+        "KNOWLEDGE_COACH",
+        "WEATHER_ADVISOR"
+      ],
+      "expectedSuccessfulAgents": [
+        "RUNNING_ANALYST",
+        "KNOWLEDGE_COACH",
+        "WEATHER_ADVISOR"
+      ]
+    },
+    {
+      "startDate": "2026-01-01",
+      "endDate": "2026-01-31",
+      "location": "Synthetic City",
+      "ordered": false,
+      "id": "ma-weather-failure",
+      "question": "结合跑步、轻松跑和不可用的模拟天气给建议。",
+      "expectedAgents": [
+        "RUNNING_ANALYST",
+        "KNOWLEDGE_COACH",
+        "WEATHER_ADVISOR"
+      ],
+      "expectedSuccessfulAgents": [
+        "RUNNING_ANALYST",
+        "KNOWLEDGE_COACH"
+      ]
+    },
+    {
+      "startDate": "2026-01-01",
+      "endDate": "2026-01-31",
+      "location": "Synthetic City",
+      "ordered": false,
+      "id": "ma-knowledge-failure",
+      "question": "结合跑步与不可用轻松跑知识。",
+      "expectedAgents": [
+        "RUNNING_ANALYST",
+        "KNOWLEDGE_COACH"
+      ],
+      "expectedSuccessfulAgents": [
+        "RUNNING_ANALYST"
+      ]
+    },
+    {
+      "startDate": "2026-01-01",
+      "endDate": "2026-01-31",
+      "location": "Synthetic City",
+      "ordered": false,
+      "id": "ma-running-failure",
+      "question": "结合不可用跑步记录与轻松跑知识。",
+      "expectedAgents": [
+        "RUNNING_ANALYST",
+        "KNOWLEDGE_COACH"
+      ],
+      "expectedSuccessfulAgents": [
+        "KNOWLEDGE_COACH"
+      ]
+    }
+  ]
+}

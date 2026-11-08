@@ -1,4 +1,4 @@
-# RunAgent v0.8
+# RunAgent v0.9
 
 RunAgent 是 Watson 的个人跑步 AI 后端与 Java / Spring AI 学习项目。它与 [Watson Running](https://github.com/bells/watson-running) 独立构建和部署。
 
@@ -10,6 +10,7 @@ RunAgent 是 Watson 的个人跑步 AI 后端与 Java / Spring AI 学习项目�
 - `POST /api/knowledge/ask`：无状态的跑步书籍 RAG 问答；默认关闭，使用前需启用本地知识库。
 - `POST /api/knowledge/search`：仅 local profile 提供检索调试，返回来源、分数及最多 200 字的 preview。
 - `POST /api/agent`：多步 Tool Calling + 有界 Conversation Memory，返回 `conversationId`、`executionId`、实际执行的 `toolCallCount` 和最终 `content`。
+- `POST /api/multi-agent/training-advice` 通过有界 Supervisor cycle 委派 Running、Knowledge 和 Weather 专业 Agent，能力隔离、无状态、失败可部分隔离。
 - `POST /api/workflows/training-analysis`：LangGraph4j 确定性训练分析，显式选择 Running / Knowledge / Combined；无状态，分析模型没有 Tools 或 Memory。
 
 Tool Calling 使模型能够请求 Java 工具；v0.3 Agent Loop 在一次请求内根据 Tool 结果继续行动。v0.4 让 `/api/agent` 跨请求恢复有限对话上下文。`/api/chat`、`/api/chat/stream` 和 `/api/intent` 仍是无状态接口。
@@ -31,6 +32,45 @@ Client conversationId → POST /api/agent → RunAgentService
 
 比较两个时间段时，模型应分别调用 `getRunningSummary` 两次；需要个别训练时再调用 `getRecentRuns`。不提供 `compareRunningPeriods`，以便观察根据前一 Observation 作出的下一步决定。完整机制见 [Agent Loop](docs/agent-loop.md)；v0.2 的底层协议学习实验见 [Tool Calling Flow](docs/tool-calling-flow.md)。
 
+## Multi-Agent v0.9
+
+独立 Supervisor 通过 Structured Output 选择下一 Specialist，每个专业 Agent 用自己的 Prompt、ChatClient 和最小能力形成压缩报告，再 handoff 回 Supervisor。最终统一回答。LangGraph4j Core 保持1.8.27，Graph 在启动时编译一次。
+
+```text
+                       RunAgent
+        ┌─────────────────┼─────────────────┐
+        ▼                 ▼                 ▼
+   Single Agent       Workflow         Multi-Agent
+        │                 │            Supervisor
+        │                 │         ┌───────┼───────┐
+        ▼                 ▼         ▼       ▼       ▼
+      MCP            Running+RAG Running Knowledge Weather
+```
+
+| Capability | 核心问题 |
+| --- | --- |
+| Tool Calling | 模型调用什么能力？ |
+| Agent Loop | 单个 Agent 下一步做什么？ |
+| Memory | 之前聊过什么？ |
+| RAG | 外部知识是什么？ |
+| MCP | 能力如何标准化提供？ |
+| Workflow | 应用如何确定性编排？ |
+| Evaluation | 系统做得对不对？ |
+| Observability | 系统运行时发生什么？ |
+| Multi-Agent | 多个专业 Agent 如何协作？ |
+
+```bash
+curl -X POST http://127.0.0.1:8080/api/multi-agent/training-advice \
+  -H 'Content-Type: application/json' \
+  -d '{"question":"结合训练记录、跑步知识和深圳天气给出训练建议。","startDate":"2026-01-01","endDate":"2026-01-31","location":"深圳"}'
+```
+
+question 必填，日期与 location 为可选权威提示。日期必须成对，含首尾最多366天。默认 `MULTI_AGENT_TIMEOUT=180s`、`MULTI_AGENT_MAX_DELEGATIONS=3`、`MULTI_AGENT_MAX_REPORT_CHARS=2500`、`MULTI_AGENT_MAX_TASK_CHARS=2000`。每个 Specialist 最多尝试一次，失败也消耗预算。Supervisor 没有工具，Running/Weather 只有各自三项工具，Knowledge 只做显式 RAG retrieval 与独立模型分析。
+
+RAG 需要现有索引 Ready，Weather 需要启用相应 MCP profile 并成功发现三项工具。未启用的能力标为不可用，单项故障允许使用其他成功证据汇总，全部证据失败返回503。Response 只有 executionId、delegationPath、agentsUsed、delegationCount 和 content。Shared State 仅保留 bounded reports，无 Conversation Memory、Checkpoint、Retry、并行或 peer handoff。
+
+详见 [Multi-Agent 学习手册](docs/multi-agent.md) 和 [v0.9 验证记录](docs/v0.9-verification.md)。简单个人统计继续使用 `/api/agent`，避免增加不必要的模型调用。
+
 ## Evaluation / Observability：v0.8
 
 Evaluation 判断“系统做得对不对”，Observability 解释“执行中发生了什么”。本阶段增加版本化合成数据集、独立 JavaExec 评估 Runner、Tool Selection/Arguments、RAG Recall@K/Precision@K/MRR、Workflow Route 与 JSON/Markdown 报告；运行时接入 Actuator、Micrometer、Prometheus、OpenTelemetry/OTLP 和最小业务 Observation。
@@ -50,7 +90,7 @@ Evaluation 判断“系统做得对不对”，Observability 解释“执行中�
 
 默认不外发 Trace/OTLP Metrics/Logs，Management 只在回环9091提供 health；observability profile 才开放 metrics/prometheus 并启用本地 Trace。Prompt、Completion、工具内容与检索正文采集关闭，另清洗 VectorStore query 属性和 AI error exception events。Local stack 使用固定版本 Jaeger + Prometheus；Compose 通过宿主机回环端口发布 UI/OTLP，Prometheus 经 host.docker.internal 抓取本机 Management，配置与实测见观测文档。
 
-详见 [Evaluation 学习手册](docs/evaluation.md)、[Observability 学习手册](docs/observability.md) 和 [v0.8 实测记录](docs/v0.8-verification.md)。v0.9 Multi-Agent 仍未实现。
+详见 [Evaluation 学习手册](docs/evaluation.md)、[Observability 学习手册](docs/observability.md) 和 [v0.8 实测记录](docs/v0.8-verification.md)。v0.9 新增独立 Multi-Agent 入口，详见 [Multi-Agent 手册](docs/multi-agent.md)。
 
 ## Workflow / LangGraph4j：v0.7
 
@@ -94,7 +134,7 @@ curl -X POST http://localhost:8080/api/workflows/training-analysis \
 
 Running 节点按照 `RUNNING_TOOL_PROVIDER` 使用 local service 或已经通过白名单过滤的 Running MCP callback；MCP 模式不会读取 Host 本地文件。Knowledge 节点复用 `KnowledgeSearchService` 的 TopK/threshold/索引与安全日志，须开启 `RAG_ENABLED=true` 并准备可用索引。Analysis 只解释已收集证据；不会自行选 Tool、重新检索或访问 Conversation Memory。
 
-默认 `WORKFLOW_TIMEOUT=60s`，是应用 deadline 和尽力取消。必需证据不可用、零召回、模型失败或空答复会安全失败，不降级为模型常识。Weather 继续属于 Agent 的动态能力；当前不做 Weather Workflow、Checkpoint/Saver、Retry、Streaming/Resume、并行 Graph 或 Multi-Agent。完整概念见 [Workflow 学习手册](docs/workflow.md)，实测边界见 [v0.7 验证](docs/v0.7-verification.md)。
+默认 `WORKFLOW_TIMEOUT=60s`，是应用 deadline 和尽力取消。必需证据不可用、零召回、模型失败或空答复会安全失败，不降级为模型常识。Weather 继续属于 Agent 的动态能力；现有 Workflow 不接入 Weather、Checkpoint/Saver、Retry、Streaming/Resume、并行 Graph 或 Multi-Agent 编排。完整概念见 [Workflow 学习手册](docs/workflow.md)，实测边界见 [v0.7 验证](docs/v0.7-verification.md)。
 
 ## MCP：v0.6
 
@@ -296,5 +336,5 @@ curl -X POST http://localhost:8080/api/knowledge/search \
 | v0.5 | RAG |
 | v0.6 | MCP |
 | v0.7 | Workflow / LangGraph4j |
-| v0.8 | Evaluation / Observability（当前） |
-| v0.9 | Multi-Agent（未实现） |
+| v0.8 | Evaluation / Observability |
+| v0.9 | Supervisor / Specialist / Handoff / 有界循环 Multi-Agent（当前） |

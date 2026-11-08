@@ -7,6 +7,32 @@ import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import static org.assertj.core.api.Assertions.*;
 
 class ObservabilityConfigurationTest {
+    @Test void configuredModelDoesNotRetryProviderRequestsByDefault() throws Exception {
+        var requests = new java.util.concurrent.atomic.AtomicInteger();
+        var server = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            requests.incrementAndGet();
+            exchange.getRequestBody().close();
+            byte[] body = "{\"error\":{\"message\":\"synthetic-provider-failure\",\"type\":\"server_error\"}}".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(500, body.length);
+            try (var output = exchange.getResponseBody()) { output.write(body); }
+        });
+        server.start();
+        try {
+            new ApplicationContextRunner().withInitializer(new ConfigDataApplicationContextInitializer())
+                    .withUserConfiguration(cn.watsonzhu.runagent.RunAgentApplication.class)
+                    .withPropertyValues("AI_GATEWAY_API_KEY=synthetic-key", "run-agent.rag.enabled=false", "spring.ai.mcp.client.enabled=false",
+                            "AI_GATEWAY_BASE_URL=http://127.0.0.1:" + server.getAddress().getPort() + "/v1")
+                    .run(context -> {
+                        assertThat(context).hasNotFailed();
+                        assertThatThrownBy(() -> context.getBean(org.springframework.ai.openai.OpenAiChatModel.class)
+                                .call(new org.springframework.ai.chat.prompt.Prompt("synthetic question"))).isInstanceOf(RuntimeException.class);
+                        assertThat(requests.get()).isEqualTo(1);
+                    });
+        } finally { server.stop(0); }
+    }
+
     @Test void defaultConfigurationDisablesNetworkExportAndSensitiveAiContent() {
         new ApplicationContextRunner().withInitializer(new ConfigDataApplicationContextInitializer()).run(context -> {
             var env = context.getEnvironment();

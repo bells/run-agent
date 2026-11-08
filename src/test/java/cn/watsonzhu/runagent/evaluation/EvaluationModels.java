@@ -7,9 +7,9 @@ import tools.jackson.databind.JsonNode;
 
 public final class EvaluationModels {
     private EvaluationModels() { }
-    public enum Category { TOOL, RAG, WORKFLOW, RUNNING_CALCULATION, JUDGE, LOCAL_PRIVATE_DATASET }
+    public enum Category { TOOL, RAG, WORKFLOW, MULTI_AGENT, RUNNING_CALCULATION, JUDGE, LOCAL_PRIVATE_DATASET }
     public enum Status { PASS, FAIL, SKIPPED, UNJUDGED }
-    public enum Evidence { SCRIPTED_MODEL_CONTRACT, FAKE_EMBEDDING, DETERMINISTIC_GRAPH, LIVE_MODEL, LLM_JUDGE, LOCAL_PRIVATE_DATASET }
+    public enum Evidence { SCRIPTED_MODEL_CONTRACT, FAKE_EMBEDDING, DETERMINISTIC_GRAPH, SCRIPTED_MULTI_AGENT_CONTRACT, LIVE_MODEL, LLM_JUDGE, LOCAL_PRIVATE_DATASET }
     public enum Reason { OK, TOOL_MISMATCH, ARGUMENT_MISMATCH, RETRIEVAL_BELOW_THRESHOLD, ROUTE_MISMATCH, UNJUDGED_LABELS,
         NO_CONTEXT, EXECUTION_FAILED, TIMEOUT, JUDGE_FAILED, LOCAL_RETRIEVAL_UNAVAILABLE, INVALID_LABELS }
     public record ToolCall(String name, JsonNode arguments) {
@@ -32,6 +32,9 @@ public final class EvaluationModels {
     public record RagCase(String id, String question, Set<String> relevantDocumentIds, int k,
                           boolean expectedNoContext, double minRecall, double minReciprocalRank) { }
     public record WorkflowCase(String id, String mode, String question, String startDate, String endDate, List<String> expectedNodes) { }
+    public record MultiAgentCase(String id, String question, String startDate, String endDate, String location,
+                                 boolean ordered, List<String> expectedAgents, List<String> expectedSuccessfulAgents) { }
+    public record MultiAgentScript(String id, List<String> decisions, String failedSpecialist) { }
     public record CaseResult(String caseId, Category category, Evidence evidence, Status status,
                              Map<String, Double> metrics, Reason reasonCode) {
         public CaseResult {

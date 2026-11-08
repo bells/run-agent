@@ -6,6 +6,7 @@ import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 import cn.watsonzhu.runagent.exception.AgentLimitException;
 import cn.watsonzhu.runagent.exception.WorkflowException;
+import cn.watsonzhu.runagent.exception.MultiAgentException;
 import io.micrometer.core.instrument.DistributionSummary;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.observation.Observation;
@@ -24,6 +25,16 @@ public final class RunAgentObservation {
     public <T> T agent(String executionId, IntSupplier toolCount, Supplier<T> action) {
         try { return observe("runagent.agent", "executionId", executionId, Map.of(), action); }
         finally { DistributionSummary.builder("runagent.agent.tool.calls").register(meters).record(toolCount.getAsInt()); }
+    }
+    public <T> T multiAgent(String executionId, IntSupplier delegationCount, Supplier<T> action) {
+        try { return observe("runagent.multi_agent", "multiAgentExecutionId", executionId, Map.of(), action); }
+        finally { DistributionSummary.builder("runagent.multi_agent.delegations").register(meters).record(delegationCount.getAsInt()); }
+    }
+    public <T> T multiAgentSpecialist(String executionId, String specialist, Supplier<T> action) {
+        if (!Set.of("running", "knowledge", "weather", "supervisor_route", "supervisor_synthesis").contains(specialist))
+            throw new IllegalArgumentException("Unknown multi-agent specialist");
+        return observe("runagent.multi_agent.specialist", "multiAgentExecutionId", executionId,
+                Map.of("specialist", specialist), action);
     }
     public <T> T workflow(String executionId, String mode, Supplier<T> action) {
         return observe("runagent.workflow", "workflowExecutionId", executionId, Map.of("mode", MODES.contains(mode == null ? "" : mode) ? mode : "invalid"), action);
@@ -48,7 +59,9 @@ public final class RunAgentObservation {
         try (var scope = observation.openScope()) { return action.get(); }
         catch (RuntimeException exception) {
             outcome = exception instanceof AgentLimitException ? "limit_exceeded"
-                : exception instanceof WorkflowException failure && failure.kind() == WorkflowException.Kind.TIMEOUT ? "timeout" : "error";
+                : exception instanceof WorkflowException failure && failure.kind() == WorkflowException.Kind.TIMEOUT ? "timeout"
+                : exception instanceof MultiAgentException failure && failure.kind() == MultiAgentException.Kind.TIMEOUT ? "timeout"
+                : exception instanceof MultiAgentException failure && failure.kind() == MultiAgentException.Kind.DEPENDENCY_UNAVAILABLE ? "unavailable" : "error";
             // Export a fixed error, never a provider exception whose message may contain a Prompt or payload.
             observation.error(new OperationFailed());
             throw exception;

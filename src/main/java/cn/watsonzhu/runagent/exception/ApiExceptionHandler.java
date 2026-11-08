@@ -88,7 +88,20 @@ public class ApiExceptionHandler {
         return response(status, "WORKFLOW_" + exception.kind().name(), exception.getMessage(), exchange);
     }
 
+    @ExceptionHandler(MultiAgentException.class)
+    public ResponseEntity<ApiError> handleMultiAgent(MultiAgentException exception, ServerWebExchange exchange) {
+        HttpStatus status = switch (exception.kind()) {
+            case INVALID_REQUEST -> HttpStatus.BAD_REQUEST;
+            case TIMEOUT -> HttpStatus.GATEWAY_TIMEOUT;
+            case DEPENDENCY_UNAVAILABLE, INSUFFICIENT_EVIDENCE -> HttpStatus.SERVICE_UNAVAILABLE;
+            case INVALID_SUPERVISOR_DECISION, EXECUTION_FAILED -> HttpStatus.BAD_GATEWAY;
+        };
+        return response(status, "MULTI_AGENT_" + exception.kind().name(), exception.getMessage(), exchange);
+    }
+
     private static String invalidRequestCode(ServerWebExchange exchange) {
+        if ("/api/multi-agent/training-advice".equals(exchange.getRequest().getPath().value()))
+            return "MULTI_AGENT_INVALID_REQUEST";
         return "/api/workflows/training-analysis".equals(exchange.getRequest().getPath().value())
                 ? "WORKFLOW_INVALID_REQUEST" : "INVALID_REQUEST";
     }

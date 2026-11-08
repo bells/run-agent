@@ -149,3 +149,27 @@ histogram_quantile(0.95,
 Workflow/Node 可按 mode/node 聚合 bucket。没有 histogram bucket 时，不能用 histogram_quantile 声称得到可信 P95；样本过少或时间窗太短也不能支持性能结论。不要在 Java 每次排序计算全局 P95。
 
 更多验证结果见 [v0.8 验证](v0.8-verification.md)。
+
+## Multi-Agent Observation
+
+v0.9 新增三个名称。
+
+| 名称 | 定义 | 低基数属性 |
+| --- | --- | --- |
+| runagent.multi_agent | 一次 Multi-Agent execution 的 Observation/Timer | outcome |
+| runagent.multi_agent.specialist | 一次实际开始的角色阶段 | specialist、outcome |
+| runagent.multi_agent.delegations | DistributionSummary，每请求最终记录一次 delegationCount | 无动态 tag |
+
+specialist 只有 running、knowledge、weather、supervisor_route、supervisor_synthesis。outcome 为 success、unavailable、timeout、error。multiAgentExecutionId 只作 high-cardinality span 属性或安全日志，问题、task、location、report、tool arguments 均不作 tag 或 span 内容。
+
+一次请求包含多个 LLM calls、多个专业阶段和若干 Tool Loops。仅 HTTP latency 无法判断哪个角色消耗了时间，或模型产生了多少实际 Token。复用 Spring AI ChatClient/ChatModel/Tool/VectorStore spans 与供应商实际返回的 usage，不另外估算 Cost。
+
+真正达到循环上限或已无可选能力时，Graph 仍经过 supervisor 节点，但不创建新的 Router LLM 阶段 Observation。尚未开始的 Specialist 没有 span。失败阶段保留固定 outcome，单项失败后的整个请求可以是 success。取消后正在执行的 Provider 可能晚返回，业务 Observation 会在其实际结束时停止，HTTP 请求可以先超时。
+
+保留 AI error sanitizer、VectorStore privacy convention 和敏感内容采集 false。额外关闭 `org.springframework.ai.model.tool.DefaultToolCallingManager`，因为 Spring AI 2.0.1 对未知工具名的 WARN 会直接记录模型提供的字符串，可能包含复制的私有内容。日志捕获回归测试覆盖该情况。
+
+Boot + 合成本机 HTTP 模型网关 + 内存 OTel exporter 已实际验证循环 Graph 的 HTTP、业务、模型、Tool 和向量检索处在同一 Trace，安全哨兵没有进入 attributes/events。当前机器没有运行 Docker daemon，v0.9 未执行 Jaeger/Prometheus 端到端复验。实际树与执行边界见 [v0.9 验证记录](v0.9-verification.md)。
+
+Synthesis 普通日志新增 phase=SYNTHESIZE 的 STARTED 与 SUCCESS/FAILED、latencyMs，关联 multiAgentExecutionId。仅记录阶段元数据，汇总文本与供应商异常保持在日志之外。
+
+2026-11-08实验E暴露了SDK重试与取消收尾问题。Knowledge模型阶段出现两次约60秒的HTTP等待，整次请求在180秒deadline结束。SDK默认重试现显式关闭；Root和阶段的异常路径优先检查执行控制，使取消后的失败归类timeout。HTTP已经取消时，迟到异常在本次Callable边界结束，避免重复onErrorDropped日志。回归测试捕获真实丢弃信号，并用本地HTTP500服务验证SDK只请求一次。

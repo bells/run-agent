@@ -38,7 +38,7 @@ import static cn.watsonzhu.runagent.evaluation.EvaluationModels.*;
 public final class EvaluationFixtures implements AutoCloseable {
     static final JsonMapper JSON = new JsonMapper();
     static final List<String> FILES = List.of("tool-cases.json", "rag-cases.json", "workflow-cases.json",
-        "synthetic-knowledge.json", "synthetic-activities.json", "model-scripts.json");
+        "synthetic-knowledge.json", "synthetic-activities.json", "model-scripts.json", "multi-agent-cases.json", "multi-agent-model-scripts.json");
     private final Map<String, JsonNode> datasets = new TreeMap<>();
     private final Map<String, DatasetIdentity> identities = new TreeMap<>();
     private final Path activities;
@@ -67,10 +67,12 @@ public final class EvaluationFixtures implements AutoCloseable {
         // Keep real retrieval/ranking; replace only the persisted index holder.
         var index = mock(KnowledgeIndexService.class);
         when(index.store()).thenReturn(store);
+        when(index.isAvailable()).thenReturn(true);
         var beans = new DefaultListableBeanFactory();
         beans.registerSingleton("syntheticIndex", index);
         search = new KnowledgeSearchService(properties, beans.getBeanProvider(KnowledgeIndexService.class), cn.watsonzhu.runagent.observability.ObservationTestSupport.noop());
-        prompts = new PromptCatalog(prompt("run-agent-system.txt"), prompt("running-intent-system.txt"), prompt("run-agent-agent-system.txt"));
+        prompts = new PromptCatalog(prompt("run-agent-system.txt"), prompt("running-intent-system.txt"), prompt("run-agent-agent-system.txt"),
+                java.time.Clock.fixed(java.time.Instant.parse("2026-04-01T00:00:00Z"), java.time.ZoneOffset.UTC));
     }
     private static ByteArrayResource prompt(String name) throws Exception {
         String content = new ClassPathResource("prompts/" + name).getContentAsString(StandardCharsets.UTF_8);

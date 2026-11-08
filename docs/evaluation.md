@@ -120,3 +120,19 @@ JSON/Markdown 包含执行时间、应用版本、数据集身份、case 数量�
 可选 `.run-agent/evaluation/baseline.json` 保存人工选定的历史 report.json 副本。只有 suite checksum、executionType、metricDefinitionVersion、model/Judge/temperature 身份均一致才输出 delta；不同数据或执行类型标记 BASELINE_INCOMPATIBLE。没有自动覆盖 baseline 的命令。
 
 Recall@K 等 Evaluation Metrics 不注册成线上 Gauge，因为线上没有 Ground Truth。运行时 RAG match count 也不是 Recall。当前没有真实 Embedding corpus 的自动 live benchmark、实验追踪平台或人工评审系统。真实结果和未执行项见 [v0.8 验证](v0.8-verification.md)。
+
+## Multi-Agent Delegation Evaluation
+
+v0.9 在原有离线 suite 中增加7个 Multi-Agent case，覆盖 Running-only、Knowledge-only、Weather-only、三专业协作，以及三种单项依赖失败。`multi-agent-cases.json` 保存固定日期与期望 Agent/成功集合，`multi-agent-model-scripts.json` 独立保存路由脚本，两者均版本化并记录 checksum。
+
+执行链为真实循环 StateGraph、独立 ChatClient、Spring AI Structured Output、ToolCallingAdvisor、RunningTools、合成 Weather callbacks、现有 KnowledgeSearchService/向量检索。观测到的 agentsUsed 与实际模型请求的工具定义用于评分。三个指标的默认 gate 都为1.0，可通过同名 `evaluation.threshold.*` 属性覆盖。
+
+| 指标 | 定义 |
+| --- | --- |
+| multiAgentDelegationAccuracy | 实际尝试 Agent 集合完整匹配期望的 case 比例，ordered=true 时要求顺序相同，额外/缺少/重复均失败 |
+| multiAgentCapabilityIsolationAccuracy | 实际角色模型请求的工具集合与最小授权集合一致的 case 比例，Supervisor/Knowledge 为零工具 |
+| multiAgentCompletionAccuracy | Synthesis 实际收到的 SUCCESS Agent 集合与期望完整匹配的 case 比例 |
+
+单 Agent 重点评估 Tool selection/arguments 与回答质量。Multi-Agent 还要检查专业角色选择、不必要委派、漏委派与失败隔离。Completion 指标可以发现某个 Specialist 错误失败却被其他证据掩盖的情况。
+
+新增结果标记 `SCRIPTED_MULTI_AGENT_CONTRACT`。它验证 Graph、Delegation contract、Capability isolation 与 Failure semantics，真实模型路由质量需要独立验证。当前 liveEvaluation 保留既有 opt-in 行为，没有加入 Multi-Agent Judge 或优化器。报告仍只包含安全 ID、指标、身份和 reasonCode。

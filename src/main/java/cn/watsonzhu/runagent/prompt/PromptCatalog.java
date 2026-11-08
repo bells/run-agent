@@ -20,6 +20,11 @@ public class PromptCatalog {
     private final String intentSystemPrompt;
     private final String agentSystemPrompt;
     private final String trainingAnalysisWorkflowSystemPrompt;
+    private final String supervisorRoutingPrompt;
+    private final String supervisorSynthesisPrompt;
+    private final String runningAnalystPrompt;
+    private final String knowledgeCoachPrompt;
+    private final String weatherAdvisorPrompt;
     private final Clock clock;
 
     @Autowired
@@ -38,11 +43,16 @@ public class PromptCatalog {
         this(chatSystemPrompt, intentSystemPrompt, chatSystemPrompt, clock);
     }
 
-    PromptCatalog(Resource chatSystemPrompt, Resource intentSystemPrompt, Resource agentSystemPrompt, Clock clock) {
+    public PromptCatalog(Resource chatSystemPrompt, Resource intentSystemPrompt, Resource agentSystemPrompt, Clock clock) {
         this.chatSystemPrompt = read(chatSystemPrompt);
         this.intentSystemPrompt = read(intentSystemPrompt);
         this.agentSystemPrompt = read(agentSystemPrompt);
         this.trainingAnalysisWorkflowSystemPrompt = read(new ClassPathResource("prompts/training-analysis-workflow-system.txt"));
+        this.supervisorRoutingPrompt = read(new ClassPathResource("prompts/multi-agent-supervisor-routing-system.txt"));
+        this.supervisorSynthesisPrompt = read(new ClassPathResource("prompts/multi-agent-synthesis-system.txt"));
+        this.runningAnalystPrompt = read(new ClassPathResource("prompts/running-analyst-agent-system.txt"));
+        this.knowledgeCoachPrompt = read(new ClassPathResource("prompts/knowledge-coach-agent-system.txt"));
+        this.weatherAdvisorPrompt = read(new ClassPathResource("prompts/weather-advisor-agent-system.txt"));
         this.clock = clock;
     }
 
@@ -62,6 +72,14 @@ public class PromptCatalog {
     public String trainingAnalysisWorkflowSystemPrompt() {
         return trainingAnalysisWorkflowSystemPrompt;
     }
+
+    public String multiAgentSupervisorRoutingPrompt() { return dated(supervisorRoutingPrompt); }
+    public String multiAgentSynthesisPrompt() { return dated(supervisorSynthesisPrompt); }
+    public String runningAnalystPrompt() { return dated(runningAnalystPrompt); }
+    public String knowledgeCoachPrompt() { return dated(knowledgeCoachPrompt); }
+    public String weatherAdvisorPrompt() { return dated(weatherAdvisorPrompt); }
+
+    private String dated(String prompt) { return prompt.replace(CURRENT_DATE_TOKEN, LocalDate.now(clock).toString()); }
 
     private static String read(Resource resource) {
         try {

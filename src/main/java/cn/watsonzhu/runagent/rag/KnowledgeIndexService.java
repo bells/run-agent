@@ -92,6 +92,8 @@ public class KnowledgeIndexService {
         return chunks;
     }
 
+    public boolean isAvailable() { return readyStore != null; }
+
     public VectorStore store() {
         if (readyStore == null) throw new KnowledgeBaseUnavailableException("Knowledge index is not available.");
         return readyStore;

@@ -39,10 +39,13 @@ public final class McpCatalog implements ToolCallbackProvider {
                 var tools = provider.getToolCallbacks();
                 Map<String, ToolCallback> connectionTools = new HashMap<>();
                 for (var callback : tools) {
-                    exposed.add(new TracingToolCallback(callback, connection));
                     String originalName = callback instanceof SyncMcpToolCallback mcp
                             ? mcp.getOriginalToolName() : callback.getToolDefinition().name();
-                    connectionTools.put(originalName, callback);
+                    ToolCallback acceptedCallback = callback;
+                    if ("weather".equals(connection) && callback instanceof SyncMcpToolCallback mcp)
+                        acceptedCallback = new StructuredWeatherToolCallback(client, mcp);
+                    exposed.add(new TracingToolCallback(acceptedCallback, connection));
+                    connectionTools.put(originalName, acceptedCallback);
                 }
                 accepted.put(connection, Map.copyOf(connectionTools));
                 log.info("mcp server={} version={} protocol={} status=READY discovered={} exposed={} tools={}", connection,
@@ -60,6 +63,12 @@ public final class McpCatalog implements ToolCallbackProvider {
         return version != null && version.matches("[A-Za-z0-9._-]{1,40}") ? version : "unknown";
     }
     @Override public ToolCallback[] getToolCallbacks() { return callbacks.clone(); }
+
+    /** Connection-scoped callbacks from the same accepted startup snapshot. */
+    public ToolCallback[] getToolCallbacks(String connection) {
+        return capabilities.getOrDefault(connection, Map.of()).entrySet().stream()
+                .sorted(Map.Entry.comparingByKey()).map(Map.Entry::getValue).toArray(ToolCallback[]::new);
+    }
 
     /** Only callbacks accepted during startup discovery are addressable here. No Agent trace is attached. */
     public Optional<ToolCallback> findTool(String connection, String toolName) {

@@ -1,0 +1,65 @@
+{
+  "datasetVersion": "v1",
+  "cases": [
+    {
+      "id": "ma-running",
+      "decisions": [
+        "RUNNING_ANALYST",
+        "FINISH"
+      ],
+      "failedSpecialist": null
+    },
+    {
+      "id": "ma-knowledge",
+      "decisions": [
+        "KNOWLEDGE_COACH",
+        "FINISH"
+      ],
+      "failedSpecialist": null
+    },
+    {
+      "id": "ma-weather",
+      "decisions": [
+        "WEATHER_ADVISOR",
+        "FINISH"
+      ],
+      "failedSpecialist": null
+    },
+    {
+      "id": "ma-combined",
+      "decisions": [
+        "KNOWLEDGE_COACH",
+        "RUNNING_ANALYST",
+        "WEATHER_ADVISOR"
+      ],
+      "failedSpecialist": null
+    },
+    {
+      "id": "ma-weather-failure",
+      "decisions": [
+        "RUNNING_ANALYST",
+        "WEATHER_ADVISOR",
+        "KNOWLEDGE_COACH"
+      ],
+      "failedSpecialist": "WEATHER_ADVISOR"
+    },
+    {
+      "id": "ma-knowledge-failure",
+      "decisions": [
+        "KNOWLEDGE_COACH",
+        "RUNNING_ANALYST",
+        "FINISH"
+      ],
+      "failedSpecialist": "KNOWLEDGE_COACH"
+    },
+    {
+      "id": "ma-running-failure",
+      "decisions": [
+        "RUNNING_ANALYST",
+        "KNOWLEDGE_COACH",
+        "FINISH"
+      ],
+      "failedSpecialist": "RUNNING_ANALYST"
+    }
+  ]
+}

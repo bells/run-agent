@@ -14,11 +14,13 @@ import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.mcp.SyncMcpToolCallback;
 import cn.watsonzhu.runagent.mcp.StructuredWeatherToolCallback;
 import org.springframework.ai.model.tool.ToolCallingManager;
+import org.springframework.ai.model.tool.ToolCallLimitExceededException;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.ToolCallbackProvider;
 
 /** Each specialist owns an independent instance and client with its own immutable capability snapshot. */
 final class ToolSpecialistClient {
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(ToolSpecialistClient.class);
     private final ChatClient client;
     private final ToolCallback[] callbacks;
     private final MultiAgentProperties properties;
@@ -51,6 +53,12 @@ final class ToolSpecialistClient {
                 .toolContext(Map.of(MultiAgentExecutionTrace.CONTEXT_KEY, trace)).call().chatResponse();
         trace.control().checkActive();
         if (trace.hasFailure()) throw new MultiAgentException(MultiAgentException.Kind.DEPENDENCY_UNAVAILABLE);
+        if (response != null && response.getResult() != null && ToolCallLimitExceededException.FINISH_REASON.equals(
+                response.getResult().getMetadata().getFinishReason())) {
+            log.info("multiAgentExecutionId={} specialist={} phase=REPORT status=FAILED reason=TOOL_CALL_LIMIT successfulToolCalls={}",
+                    trace.executionId(), trace.specialist().observationName(), trace.successfulToolCalls());
+            throw new MultiAgentException(MultiAgentException.Kind.EXECUTION_FAILED);
+        }
         if (trace.successfulToolCalls() == 0) throw new MultiAgentException(MultiAgentException.Kind.INSUFFICIENT_EVIDENCE);
         if (trace.specialist() == Specialist.WEATHER_ADVISOR && !trace.hasWeatherEvidence())
             throw new MultiAgentException(MultiAgentException.Kind.INSUFFICIENT_EVIDENCE);

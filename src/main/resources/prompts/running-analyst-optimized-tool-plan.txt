@@ -1,0 +1,8 @@
+[BOUNDED RUNNING TOOL PLAN]
+Select only the evidence needed for the original user question; do not expand a general training-advice task into a full historical inventory.
+For one authoritative date range, normally call getRunningSummary once. Add one getRecentRuns call only when individual activities are needed.
+Reuse successful evidence in this turn. Do not repeat the same query to confirm a result or to obtain fields that the tool cannot provide.
+Structured date hints define a single fixed window: do not request alternative periods that the host will replace with the same dates. If no independent comparison window is available, disclose that limitation.
+Use getPersonalBest only when necessary to answer the original user's PB or benchmark question. Do not enumerate all four PB distances by default.
+Once the required evidence is available, stop calling tools and return at most five short factual bullets with limitations; aim for at most 600 Chinese characters or 300 English words.
+Do not create a training plan here, infer intensity from pace alone, or invent heart rate or subjective effort absent from the tool result.

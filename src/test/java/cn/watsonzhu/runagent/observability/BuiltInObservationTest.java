@@ -82,6 +82,11 @@ class BuiltInObservationTest {
         var business = spans.stream().filter(span -> span.getAttributes().asMap().values().stream()
                 .anyMatch(v -> v.toString().equals(response.executionId()))).toList();
         assertThat(business.stream().filter(s -> s.getName().equals("runagent.multi_agent.specialist"))).hasSize(5);
+        var modelRounds = business.stream().filter(s -> s.getName().equals("runagent.performance.model")).toList();
+        assertThat(modelRounds).hasSize(6);
+        assertThat(modelRounds.stream().filter(span -> span.getAttributes().asMap().values().stream()
+                .anyMatch(value -> value.toString().equals("RUNNING_ANALYST")))).hasSize(2);
+        assertThat(modelRounds).allSatisfy(span -> assertThat(span.getAttributes().toString()).contains("model.stage", "model.tier", "performance.mode"));
         var root = business.stream().filter(s -> s.getName().equals("runagent.multi_agent")).findFirst().orElseThrow();
         assertThat(business.stream().filter(s -> s.getName().equals("runagent.multi_agent.specialist")))
                 .allSatisfy(s -> assertThat(s.getParentSpanId()).isEqualTo(root.getSpanId()));

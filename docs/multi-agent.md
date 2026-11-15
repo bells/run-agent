@@ -258,3 +258,8 @@ Spring AI2.0.1底层OpenAI SDK有独立的自动重试默认值。RunAgent明确
 全局deadline仍默认180s。阶段模型失败时，在预算内返回Supervisor进行失败隔离；全局取消后，迟到异常在本请求的Callable边界结束，不进入Reactor的onErrorDropped路径。没有使用全局错误吞掉Hook。Root和阶段在异常路径也检查cancel/deadline，观测归类timeout。
 
 Knowledge模型调用新增ragQueryId、phase=MODEL、STARTED/SUCCESS/FAILED和latencyMs日志，可用同一Trace或ragQueryId关联检索。问题、子任务、检索正文和报告不写入这些日志。
+
+
+## v0.10增量
+
+当前加入[性能与成本治理](performance.md)：独立Route/Synthesis模型wrapper，任务级预算与Usage collector，模型round计数、最终调用预留、Context projection和内部Snapshot。Graph拓扑、三个Specialist、工具白名单、Weather guard、MCP空metadata与公开Response不变。默认BASELINE；实验OPTIMIZED才切换tier和Context。完整验证见[v0.10](v0.10-verification.md)。

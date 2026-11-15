@@ -1,6 +1,7 @@
 package cn.watsonzhu.runagent.observability;
 
 import java.util.Map;
+import cn.watsonzhu.runagent.performance.*;
 import java.util.Set;
 import java.util.function.IntSupplier;
 import java.util.function.Supplier;
@@ -50,6 +51,15 @@ public final class RunAgentObservation {
     public void ragOutcome(String outcome) {
         if (!Set.of("success", "no_context", "unavailable", "error").contains(outcome)) throw new IllegalArgumentException("Unknown RAG outcome");
         meters.counter("runagent.rag.requests", "outcome", outcome).increment();
+    }
+    public void performance(PerformanceSnapshot snapshot) {
+        for (var call : snapshot.calls()) {
+            meters.counter("runagent.performance.model.calls", "stage", call.stage().name(), "tier", call.tier().name(),
+                    "status", call.status().name()).increment();
+            meters.counter("runagent.performance.usage.calls", "stage", call.stage().name(), "usageStatus", call.usageStatus().name()).increment();
+        }
+        for (var reason : snapshot.budgetReasons())
+            meters.counter("runagent.performance.budget.exhausted", "budgetReason", reason.name().toLowerCase(java.util.Locale.ROOT)).increment();
     }
     private <T> T observe(String name, String idKey, String id, Map<String, String> tags, Supplier<T> action) {
         Observation observation = Observation.createNotStarted(name, registry).highCardinalityKeyValue(idKey, id);

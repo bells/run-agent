@@ -266,7 +266,7 @@ class MultiAgentCoordinatorTest {
             await(release);
             return "late report";
         });
-        var coordinator = new MultiAgentCoordinator(supervisor, running, knowledge, weather, properties, observations);
+        var coordinator = new MultiAgentCoordinator(supervisor, running, knowledge, weather, properties, observations, cn.watsonzhu.runagent.performance.PerformanceTestSupport.governance());
         var control = new MultiAgentExecutionControl(properties.timeout());
         var future = CompletableFuture.supplyAsync(() -> {
             try { return coordinator.execute(request, control); }
@@ -292,7 +292,7 @@ class MultiAgentCoordinatorTest {
             control.cancel();
             throw new IllegalStateException("private interrupted provider");
         });
-        var coordinator = new MultiAgentCoordinator(supervisor, running, knowledge, weather, properties, observations);
+        var coordinator = new MultiAgentCoordinator(supervisor, running, knowledge, weather, properties, observations, cn.watsonzhu.runagent.performance.PerformanceTestSupport.governance());
         assertKind(() -> coordinator.execute(request, control), MultiAgentException.Kind.TIMEOUT);
         assertThat(meters.get("runagent.multi_agent").tag("outcome", "timeout").timer().count()).isEqualTo(1);
         assertThat(meters.get("runagent.multi_agent.specialist").tags("specialist", "supervisor_route", "outcome", "timeout").timer().count()).isEqualTo(1);
@@ -316,7 +316,7 @@ class MultiAgentCoordinatorTest {
     }
 
     private MultiAgentCoordinator coordinator() {
-        return new MultiAgentCoordinator(supervisor, running, knowledge, weather, properties, ObservationTestSupport.noop());
+        return new MultiAgentCoordinator(supervisor, running, knowledge, weather, properties, ObservationTestSupport.noop(), cn.watsonzhu.runagent.performance.PerformanceTestSupport.governance());
     }
     private static SupervisorDecision finish() { return new SupervisorDecision(Specialist.FINISH, null); }
     private static void assertKind(org.assertj.core.api.ThrowableAssert.ThrowingCallable action, MultiAgentException.Kind kind) {

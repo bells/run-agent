@@ -136,3 +136,14 @@ v0.9 在原有离线 suite 中增加7个 Multi-Agent case，覆盖 Running-only�
 单 Agent 重点评估 Tool selection/arguments 与回答质量。Multi-Agent 还要检查专业角色选择、不必要委派、漏委派与失败隔离。Completion 指标可以发现某个 Specialist 错误失败却被其他证据掩盖的情况。
 
 新增结果标记 `SCRIPTED_MULTI_AGENT_CONTRACT`。它验证 Graph、Delegation contract、Capability isolation 与 Failure semantics，真实模型路由质量需要独立验证。当前 liveEvaluation 保留既有 opt-in 行为，没有加入 Multi-Agent Judge 或优化器。报告仍只包含安全 ID、指标、身份和 reasonCode。
+
+
+## v0.10 Performance Quality Gate
+
+Performance optimization must pass Evaluation first. Faster ≠ Better。先在相同Evaluation数据上确认Tool Contract、Retrieval、Workflow与Multi-Agent不回归，再比较时间、模型调用、Token和成本。
+
+`./gradlew performanceBenchmark`复用相同版本的七个Multi-Agent case和独立路由脚本，通过共享`MultiAgentScenario`执行真实Graph、ChatClients、ToolCallingAdvisor与合成检索，分别运行BASELINE与OPTIMIZED。比较实际委派、成功证据集合、能力隔离和工具契约；失败注入前仍检查参数，工具型Specialist必须有实际Tool尝试。预期集合不被当作实际结果。
+
+`./gradlew evaluation`保持27个case，Tool/RAG/Workflow与Multi-Agent原门槛不变。基准14个样本不是新增14个Evaluation case。离线模型的固定Usage、价格与2ms delay只验证治理和报告，不能推导真实优化比例。
+
+显式live基准使用真实模型但仍是合成依赖，默认每case每mode一轮warmup及三轮测量。检查路由/完成/工具契约，不自动启用Judge；自然语言groundedness、训练建议质量与真实四书表现仍需单独评估。详见[Performance](performance.md)。

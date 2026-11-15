@@ -1,6 +1,7 @@
 package cn.watsonzhu.runagent.multiagent;
 
 import java.util.Set;
+import cn.watsonzhu.runagent.performance.*;
 import cn.watsonzhu.runagent.config.MultiAgentProperties;
 import cn.watsonzhu.runagent.prompt.PromptCatalog;
 import io.micrometer.observation.ObservationRegistry;
@@ -17,7 +18,7 @@ public class WeatherAdvisorAgent {
     public WeatherAdvisorAgent(ChatModel model, PromptCatalog prompts,
             @Qualifier("weatherSpecialistTools") ToolCallbackProvider tools, ToolCallingManager manager,
             MultiAgentProperties properties, ObservationRegistry observations) {
-        this.client = new ToolSpecialistClient(model, tools, Set.of("openmeteo_search_locations", "openmeteo_get_forecast", "openmeteo_get_air_quality"),
+        this.client = new ToolSpecialistClient(new BudgetedChatModel(model, ModelStage.WEATHER_ADVISOR, observations), tools, Set.of("openmeteo_search_locations", "openmeteo_get_forecast", "openmeteo_get_air_quality"),
                 manager, properties, observations);
         this.prompts = prompts;
     }

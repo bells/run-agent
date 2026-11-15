@@ -173,3 +173,22 @@ Boot + 合成本机 HTTP 模型网关 + 内存 OTel exporter 已实际验证循�
 Synthesis 普通日志新增 phase=SYNTHESIZE 的 STARTED 与 SUCCESS/FAILED、latencyMs，关联 multiAgentExecutionId。仅记录阶段元数据，汇总文本与供应商异常保持在日志之外。
 
 2026-11-08实验E暴露了SDK重试与取消收尾问题。Knowledge模型阶段出现两次约60秒的HTTP等待，整次请求在180秒deadline结束。SDK默认重试现显式关闭；Root和阶段的异常路径优先检查执行控制，使取消后的失败归类timeout。HTTP已经取消时，迟到异常在本次Callable边界结束，避免重复onErrorDropped日志。回归测试捕获真实丢弃信号，并用本地HTTP500服务验证SDK只请求一次。
+
+
+## v0.10 Performance Stage / Model Tier / Budget
+
+Built-in `gen_ai.*` model telemetry (以及当前 Spring AI 导出的模型、Tool、vector meters) 继续负责底层耗时与用量；RunAgent 的 `runagent.performance.*` 负责 task/stage governance，避免复制一套 Token Histogram。
+
+- `runagent.performance.model` Observation：每个真实ChatModel round，低基数 `performance.mode`、`model.stage`、`model.tier`、`outcome`、`usage.status`；模型名与executionId仅high-cardinality。
+- `runagent.performance.model.calls`：每次完成的模型尝试计一次，包括失败与Tool Loop内部调用；tags为stage/tier/status，在任务finally按每条record刷新。
+- `runagent.performance.usage.calls`：stage/usageStatus计数，帮助识别Usage完整度。
+- `runagent.performance.budget.exhausted`：每任务每reason最多一次，固定deadline/model_calls/soft_tokens/output_tokens；soft_tokens只是软停止，output_tokens标记供应商超限/截断。
+- 原有`runagent.multi_agent.specialist`继续度量整个Stage；Snapshot中的modelDuration是其中模型子集，不能把两者相加当总延迟。
+
+UNKNOWN不输出0；Snapshot保留已知subtotal并将tokenEnforcement标为DEGRADED，完整Token和成本只在全部完整时报告。Cost主要位于Snapshot/Benchmark，未新增货币Histogram。异常只记录安全状态，保留AiObservationErrorSanitizer、PrivacySafeVectorStoreConvention与全部敏感采集false。每请求日志无Prompt、Answer、Report、Tool参数/结果、书籍或API Key。
+
+Observability告诉我们“发生了什么”，Governance规定“允许消耗多少、何时停止”。配置、关键路径与学习图见[Performance](performance.md)。
+
+逐轮安全日志增加finishReason固定枚举、outputChars（Unicode code point计数）与nullable reasoningTokens。后者仅采集原始SDK已报告且不超过completion的子集，不读取推理文本、不重复计费；未返回明细显示UNKNOWN。任意Provider结束标记不原样写日志，统一映射安全枚举。这些数值用于区分正文长度、生成截断与可能的推理消费，不把字符数转换成伪精确Token，也不据缺失明细断言模型开启了推理模式。
+
+启动/逐轮日志额外包含固定枚举reasoningEffort，模型Observation增加低基数model.reasoning_effort。它表示受信配置请求的策略，不是Provider实际消费证明；NONE下缺失reasoningTokens仍UNKNOWN。只有OPTIMIZED显式Stage配置覆盖推理选项，默认及BASELINE保持原值；实际生效与质量需人工真实复测，详见[阶段推理策略](performance.md#按阶段配置推理策略)。

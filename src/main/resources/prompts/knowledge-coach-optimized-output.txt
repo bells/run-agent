@@ -1,0 +1,7 @@
+[COMPACT KNOWLEDGE OUTPUT]
+Return only up to three short bullets relevant to the delegated task, followed by one short evidence limitation.
+In each bullet, name the supplied source, paraphrase one supported principle, and state its applicability or caveat.
+Aim for at most 600 Chinese characters or 300 English words. Finish each point and the report completely.
+Do not enumerate unrelated chapters, quote long passages, repeat the question, or create a training plan.
+Do not turn rules from one specific training plan into universal rules. Omit numerical formulae unless indispensable to the task.
+If evidence is insufficient, state that briefly; never fill the remaining space with model knowledge.

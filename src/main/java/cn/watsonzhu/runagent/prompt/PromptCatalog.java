@@ -25,6 +25,9 @@ public class PromptCatalog {
     private final String runningAnalystPrompt;
     private final String knowledgeCoachPrompt;
     private final String weatherAdvisorPrompt;
+    private final String compactKnowledgeOutput;
+    private final String compactFinalOutput;
+    private final String boundedRunningToolPlan;
     private final Clock clock;
 
     @Autowired
@@ -53,6 +56,9 @@ public class PromptCatalog {
         this.runningAnalystPrompt = read(new ClassPathResource("prompts/running-analyst-agent-system.txt"));
         this.knowledgeCoachPrompt = read(new ClassPathResource("prompts/knowledge-coach-agent-system.txt"));
         this.weatherAdvisorPrompt = read(new ClassPathResource("prompts/weather-advisor-agent-system.txt"));
+        this.compactKnowledgeOutput = read(new ClassPathResource("prompts/knowledge-coach-optimized-output.txt"));
+        this.compactFinalOutput = read(new ClassPathResource("prompts/multi-agent-synthesis-optimized-output.txt"));
+        this.boundedRunningToolPlan = read(new ClassPathResource("prompts/running-analyst-optimized-tool-plan.txt"));
         this.clock = clock;
     }
 
@@ -75,8 +81,17 @@ public class PromptCatalog {
 
     public String multiAgentSupervisorRoutingPrompt() { return dated(supervisorRoutingPrompt); }
     public String multiAgentSynthesisPrompt() { return dated(supervisorSynthesisPrompt); }
+    public String multiAgentSynthesisPrompt(boolean compact) {
+        return multiAgentSynthesisPrompt() + (compact ? "\n" + compactFinalOutput : "");
+    }
     public String runningAnalystPrompt() { return dated(runningAnalystPrompt); }
+    public String runningAnalystPrompt(boolean bounded) {
+        return runningAnalystPrompt() + (bounded ? "\n" + boundedRunningToolPlan : "");
+    }
     public String knowledgeCoachPrompt() { return dated(knowledgeCoachPrompt); }
+    public String knowledgeCoachPrompt(boolean compact) {
+        return knowledgeCoachPrompt() + (compact ? "\n" + compactKnowledgeOutput : "");
+    }
     public String weatherAdvisorPrompt() { return dated(weatherAdvisorPrompt); }
 
     private String dated(String prompt) { return prompt.replace(CURRENT_DATE_TOKEN, LocalDate.now(clock).toString()); }

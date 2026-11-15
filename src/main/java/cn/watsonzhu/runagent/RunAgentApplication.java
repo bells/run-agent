@@ -5,6 +5,7 @@ import cn.watsonzhu.runagent.config.AgentProperties;
 import cn.watsonzhu.runagent.config.MemoryProperties;
 import cn.watsonzhu.runagent.config.WorkflowProperties;
 import cn.watsonzhu.runagent.config.MultiAgentProperties;
+import cn.watsonzhu.runagent.config.PerformanceProperties;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -12,7 +13,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 /** 启用业务配置绑定。 */
 @SpringBootApplication
 @EnableConfigurationProperties({RunningDataProperties.class, AgentProperties.class, MemoryProperties.class,
-        WorkflowProperties.class, MultiAgentProperties.class})
+        WorkflowProperties.class, MultiAgentProperties.class, PerformanceProperties.class})
 public class RunAgentApplication {
 
     public static void main(String[] args) {

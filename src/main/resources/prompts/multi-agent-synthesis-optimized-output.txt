@@ -1,0 +1,10 @@
+[COMPACT FINAL OUTPUT]
+Give a short, complete answer in at most five bullets: running facts, relevant training principles, weather, practical next steps, and limitations.
+Aim for at most 900 Chinese characters or 450 English words. Prioritize supported conclusions over detail.
+Do not reproduce the specialist reports, create tables, or expand into a detailed weekly training schedule.
+Quote only numerical facts supplied by successful reports, keeping their original units and date windows. Do not recalculate ratios or invent numerical workload or pace targets.
+Do not infer training intensity from pace alone. Do not prescribe a named training plan without evidence of the user's current readiness.
+When any evidence source failed, say which evidence is missing and restrict the advice accordingly.
+An absent running report means no usable running analysis for this execution; do not claim the user's underlying records are missing or inaccessible.
+An absent knowledge report means no usable knowledge analysis for this execution; do not claim retrieval or the index failed when that cause was not provided.
+Conclude cleanly within this short format rather than starting sections that cannot be completed.

@@ -1,4 +1,4 @@
-# RunAgent v0.9
+# RunAgent v0.10
 
 RunAgent 是 Watson 的个人跑步 AI 后端与 Java / Spring AI 学习项目。它与 [Watson Running](https://github.com/bells/watson-running) 独立构建和部署。
 
@@ -32,6 +32,37 @@ Client conversationId → POST /api/agent → RunAgentService
 
 比较两个时间段时，模型应分别调用 `getRunningSummary` 两次；需要个别训练时再调用 `getRecentRuns`。不提供 `compareRunningPeriods`，以便观察根据前一 Observation 作出的下一步决定。完整机制见 [Agent Loop](docs/agent-loop.md)；v0.2 的底层协议学习实验见 [Tool Calling Flow](docs/tool-calling-flow.md)。
 
+## Performance / Cost Governance v0.10
+
+Agent 能工作后，还需要知道真正发生多少次 Model Call、各阶段耗时、Token 与估算成本，并限制一次执行的消耗。默认 `PERFORMANCE_MODE=BASELINE` 保留 v0.9 的 DEFAULT 模型与 Context；`OPTIMIZED` 才启用 Stage Routing 和更短 Context。两个模式都增加1500 Token 的单次输出安全上限、16次模型调用上限及30000 Token软预算，这些是实验起点。
+
+```text
+RunAgent
+├── Agent
+├── Workflow
+├── Multi-Agent
+│   ├── Model Routing
+│   ├── Execution Budget
+│   ├── Token / Context Budget
+│   ├── Usage Collection
+│   └── Cost Estimation
+├── Evaluation → Quality Gate
+└── Observability → Latency / Token / Trace
+```
+
+Stage 专属 `BudgetedChatModel` 统计 ToolCallingAdvisor 每轮真正的模型调用；任务级预算跨 handoff 不重置，并保留最终 Synthesis 一次调用。Usage 不完整明确 UNKNOWN，价格未配置则 Cost UNKNOWN；公开 MultiAgentResponse 保持不变。不会影响其他 API 的模型选择。
+
+```bash
+./gradlew performanceBenchmark      # 离线 SYNTHETIC_CONTRACT，同一7个case × 两个模式
+./gradlew livePerformanceBenchmark  # 默认 SKIPPED，不属于 build
+# 显式 AI_GATEWAY_* 环境就绪后可选：
+LIVE_PERFORMANCE_BENCHMARK_ENABLED=true ./gradlew livePerformanceBenchmark
+```
+
+Live 也只使用合成 Running / RAG / Weather，没有读取私有配置、真实活动或四书索引。报告位于 `build/reports/run-agent-performance/`；合成 Usage、价格与延迟不能证明真实模型更快或更便宜。历史真实三源请求耗时122.532s，Knowledge模型56.170s、Synthesis23.342s，仍完整保留在 [v0.9验证](docs/v0.9-verification.md)。
+
+详见 [Performance学习手册与配置](docs/performance.md)、[v0.10验证记录](docs/v0.10-verification.md)。性能优化必须通过同一数据集的质量门槛；当前无并行Agent、跨Provider路由、重试、缓存平台或生产计费。
+
 ## Multi-Agent v0.9
 
 独立 Supervisor 通过 Structured Output 选择下一 Specialist，每个专业 Agent 用自己的 Prompt、ChatClient 和最小能力形成压缩报告，再 handoff 回 Supervisor。最终统一回答。LangGraph4j Core 保持1.8.27，Graph 在启动时编译一次。
@@ -49,6 +80,7 @@ Client conversationId → POST /api/agent → RunAgentService
 
 | Capability | 核心问题 |
 | --- | --- |
+| LLM | 模型如何理解和生成？ |
 | Tool Calling | 模型调用什么能力？ |
 | Agent Loop | 单个 Agent 下一步做什么？ |
 | Memory | 之前聊过什么？ |
@@ -58,6 +90,7 @@ Client conversationId → POST /api/agent → RunAgentService
 | Evaluation | 系统做得对不对？ |
 | Observability | 系统运行时发生什么？ |
 | Multi-Agent | 多个专业 Agent 如何协作？ |
+| Performance Governance | 怎样更快、更省且不降低质量？ |
 
 ```bash
 curl -X POST http://127.0.0.1:8080/api/multi-agent/training-advice \
@@ -337,4 +370,5 @@ curl -X POST http://localhost:8080/api/knowledge/search \
 | v0.6 | MCP |
 | v0.7 | Workflow / LangGraph4j |
 | v0.8 | Evaluation / Observability |
-| v0.9 | Supervisor / Specialist / Handoff / 有界循环 Multi-Agent（当前） |
+| v0.9 | Supervisor / Specialist / Handoff / 有界循环 Multi-Agent |
+| v0.10 | Performance / Cost Governance（当前） |

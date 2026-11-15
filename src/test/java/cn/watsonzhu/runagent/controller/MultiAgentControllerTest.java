@@ -54,7 +54,7 @@ class MultiAgentControllerTest {
         int status = switch (kind) {
             case INVALID_REQUEST -> 400;
             case TIMEOUT -> 504;
-            case DEPENDENCY_UNAVAILABLE, INSUFFICIENT_EVIDENCE -> 503;
+            case DEPENDENCY_UNAVAILABLE, INSUFFICIENT_EVIDENCE, BUDGET_EXCEEDED -> 503;
             case INVALID_SUPERVISOR_DECISION, EXECUTION_FAILED -> 502;
         };
         post("{\"question\":\"q\"}").expectStatus().isEqualTo(status).expectBody()

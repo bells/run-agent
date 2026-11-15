@@ -1,6 +1,7 @@
 package cn.watsonzhu.runagent.multiagent;
 
 import java.util.ArrayList;
+import cn.watsonzhu.runagent.performance.*;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -32,15 +33,17 @@ public class MultiAgentCoordinator {
     private final WeatherAdvisorAgent weather;
     private final MultiAgentProperties properties;
     private final RunAgentObservation observations;
+    private final PerformanceGovernance performance;
 
     public MultiAgentCoordinator(SupervisorAgent supervisor, RunningAnalystAgent running, KnowledgeCoachAgent knowledge,
-                                  WeatherAdvisorAgent weather, MultiAgentProperties properties, RunAgentObservation observations) {
+                                  WeatherAdvisorAgent weather, MultiAgentProperties properties, RunAgentObservation observations, PerformanceGovernance performance) {
         this.supervisor = supervisor;
         this.running = running;
         this.knowledge = knowledge;
         this.weather = weather;
         this.properties = properties;
         this.observations = observations;
+        this.performance = performance;
         try {
             this.graph = new StateGraph<>(MultiAgentState.SCHEMA, MultiAgentState::new)
                     .addNode("supervisor", controlled(this::route))
@@ -73,23 +76,28 @@ public class MultiAgentCoordinator {
         return execute(request, new MultiAgentExecutionControl(properties.timeout()));
     }
     public MultiAgentResponse execute(MultiAgentRequest request, MultiAgentExecutionControl control) {
-        String executionId = UUID.randomUUID().toString();
+        return executeBudgeted(request, performance.start(UUID.randomUUID().toString(), control));
+    }
+    public MultiAgentResponse executeBudgeted(MultiAgentRequest request, ExecutionBudget budget) {
+        var control = budget.control();
+        String executionId = budget.executionId();
+        try {
         return observations.multiAgent(executionId, control::delegationCount, () -> {
             try {
-                control.checkActive();
+                budget.checkActive();
                 validateRequest(request);
                 List<Specialist> available = new ArrayList<>();
                 if (running.isAvailable()) available.add(Specialist.RUNNING_ANALYST);
                 if (knowledge.isAvailable()) available.add(Specialist.KNOWLEDGE_COACH);
                 if (weather.isAvailable()) available.add(Specialist.WEATHER_ADVISOR);
-                var config = RunnableConfig.builder().addMetadata(MultiAgentExecutionControl.CONFIG_KEY, control).build();
+                var config = RunnableConfig.builder().addMetadata(MultiAgentExecutionControl.CONFIG_KEY, control).addMetadata(ExecutionBudget.CONFIG_KEY, budget).build();
                 var state = graph.invoke(MultiAgentState.initial(request, executionId, available), config)
                         .orElseThrow(() -> new MultiAgentException(MultiAgentException.Kind.EXECUTION_FAILED));
-                control.checkActive();
+                budget.checkActive();
                 return new MultiAgentResponse(executionId, state.delegationPath(),
                         state.completedAgents().stream().map(Enum::name).toList(), state.delegationCount(), state.finalAnswer());
             } catch (RuntimeException exception) {
-                control.checkActive();
+                budget.checkActive();
                 // Async graph wrappers may contain private State. Unwrap only known domain failures.
                 Throwable cause = exception;
                 while (cause != null) {
@@ -100,9 +108,14 @@ public class MultiAgentCoordinator {
                 throw new MultiAgentException(MultiAgentException.Kind.EXECUTION_FAILED);
             }
         });
+        } finally { performance.finish(budget); }
     }
 
     private Map<String, Object> route(MultiAgentState state, MultiAgentExecutionControl control) {
+        if (ExecutionScope.require().stopOptional()) {
+            if (!state.hasEvidence()) throw new MultiAgentException(MultiAgentException.Kind.BUDGET_EXCEEDED);
+            return Map.of("nextAgent", Specialist.FINISH, "delegatedTask", "", "delegationPath", List.of("supervisor"));
+        }
         if (state.delegationCount() >= properties.maxDelegations()
                 || state.availableAgents().stream().allMatch(state.completedAgents()::contains)) {
             requireEvidence(state);
@@ -114,6 +127,10 @@ public class MultiAgentCoordinator {
             validateDecision(state, result);
             return result;
         });
+        if (ExecutionScope.require().stopOptional()) {
+            if (!state.hasEvidence()) throw new MultiAgentException(MultiAgentException.Kind.BUDGET_EXCEEDED);
+            return Map.of("nextAgent", Specialist.FINISH, "delegatedTask", "", "delegationPath", List.of("supervisor"));
+        }
         if (decision.nextAgent() == Specialist.FINISH) requireEvidence(state);
         log.info("multiAgentExecutionId={} agent=supervisor phase=ROUTE nextAgent={} delegation={}",
                 state.executionId(), decision.nextAgent(), state.delegationCount());
@@ -188,6 +205,16 @@ public class MultiAgentCoordinator {
         }
     }
     private <T> T observeActive(MultiAgentState state, MultiAgentExecutionControl control, String specialist, Supplier<T> action) {
+        ModelStage stage = switch (specialist) {
+            case "supervisor_route" -> ModelStage.SUPERVISOR_ROUTE;
+            case "supervisor_synthesis" -> ModelStage.SUPERVISOR_SYNTHESIS;
+            case "running" -> ModelStage.RUNNING_ANALYST;
+            case "knowledge" -> ModelStage.KNOWLEDGE_COACH;
+            case "weather" -> ModelStage.WEATHER_ADVISOR;
+            default -> throw new IllegalArgumentException("Unknown stage");
+        };
+        long started = System.nanoTime();
+        try {
         return observations.multiAgentSpecialist(state.executionId(), specialist, () -> {
             try {
                 T result = action.get();
@@ -198,16 +225,20 @@ public class MultiAgentCoordinator {
                 throw exception;
             }
         });
+        } finally { ExecutionScope.require().stageFinished(stage, java.time.Duration.ofNanos(System.nanoTime() - started)); }
     }
 
     private AsyncNodeActionWithConfig<MultiAgentState> controlled(
             java.util.function.BiFunction<MultiAgentState, MultiAgentExecutionControl, Map<String, Object>> action) {
         return AsyncNodeActionWithConfig.node_async((state, config) -> {
             var control = (MultiAgentExecutionControl) config.metadata(MultiAgentExecutionControl.CONFIG_KEY).orElseThrow();
-            control.checkActive();
-            Map<String, Object> update = action.apply(state, control);
-            control.checkActive();
-            return update;
+            var budget = (ExecutionBudget) config.metadata(ExecutionBudget.CONFIG_KEY).orElseThrow();
+            try (var scope = ExecutionScope.open(budget)) {
+                control.checkActive();
+                Map<String, Object> update = action.apply(state, control);
+                control.checkActive();
+                return update;
+            }
         });
     }
 }

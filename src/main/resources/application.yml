@@ -71,6 +71,41 @@ run-agent:
     timeout: ${AGENT_TIMEOUT:30s}
   workflow:
     timeout: ${WORKFLOW_TIMEOUT:60s}
+  performance:
+    mode: ${PERFORMANCE_MODE:BASELINE}
+    max-model-calls: ${PERFORMANCE_MAX_MODEL_CALLS:16}
+    max-output-tokens-per-call: ${PERFORMANCE_MAX_OUTPUT_TOKENS_PER_CALL:1500}
+    soft-total-tokens: ${PERFORMANCE_SOFT_TOTAL_TOKENS:30000}
+    stage-reasoning-effort:
+      knowledge-coach: ${PERFORMANCE_REASONING_EFFORT_KNOWLEDGE_COACH:PROVIDER_DEFAULT}
+    models:
+      default:
+        name: ${spring.ai.openai.chat.model}
+      fast:
+        name: ${AI_FAST_MODEL:}
+      strong:
+        name: ${AI_STRONG_MODEL:}
+    context:
+      routing-report-chars: ${PERFORMANCE_ROUTING_REPORT_CHARS:600}
+      knowledge-evidence-chars: ${PERFORMANCE_KNOWLEDGE_EVIDENCE_CHARS:9000}
+    stage-output-limits:
+      supervisor-route: ${PERFORMANCE_ROUTE_OUTPUT_TOKENS:256}
+      running-analyst: ${PERFORMANCE_RUNNING_OUTPUT_TOKENS:800}
+      knowledge-coach: ${PERFORMANCE_KNOWLEDGE_OUTPUT_TOKENS:1000}
+      weather-advisor: ${PERFORMANCE_WEATHER_OUTPUT_TOKENS:800}
+      supervisor-synthesis: ${PERFORMANCE_SYNTHESIS_OUTPUT_TOKENS:1200}
+    pricing:
+      currency: ${PERFORMANCE_CURRENCY:USD}
+      tiers:
+        default:
+          input-per-million: ${DEFAULT_MODEL_INPUT_PRICE_PER_MILLION:-1}
+          output-per-million: ${DEFAULT_MODEL_OUTPUT_PRICE_PER_MILLION:-1}
+        fast:
+          input-per-million: ${FAST_MODEL_INPUT_PRICE_PER_MILLION:-1}
+          output-per-million: ${FAST_MODEL_OUTPUT_PRICE_PER_MILLION:-1}
+        strong:
+          input-per-million: ${STRONG_MODEL_INPUT_PRICE_PER_MILLION:-1}
+          output-per-million: ${STRONG_MODEL_OUTPUT_PRICE_PER_MILLION:-1}
   multi-agent:
     timeout: ${MULTI_AGENT_TIMEOUT:180s}
     max-delegations: ${MULTI_AGENT_MAX_DELEGATIONS:3}

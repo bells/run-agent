@@ -29,10 +29,52 @@ import static org.mockito.Mockito.*;
 import static org.mockito.ArgumentMatchers.*;
 
 class MultiAgentSpecialistsTest {
+    private cn.watsonzhu.runagent.performance.ExecutionScope performanceScope;
+    @org.junit.jupiter.api.BeforeEach void openPerformanceScope() {
+        performanceScope = cn.watsonzhu.runagent.performance.ExecutionScope.open(new cn.watsonzhu.runagent.performance.ExecutionBudget("specialist-test",
+                new MultiAgentExecutionControl(Duration.ofMinutes(1)),
+                new cn.watsonzhu.runagent.config.PerformanceProperties(cn.watsonzhu.runagent.performance.PerformanceMode.BASELINE,1000,1500,30000,
+                        cn.watsonzhu.runagent.performance.PerformanceTestSupport.properties().models(),java.util.Map.of(),null,null,java.util.Map.of())));
+    }
+    @org.junit.jupiter.api.AfterEach void closePerformanceScope() { performanceScope.close(); }
+
     static final MultiAgentProperties PROPERTIES = new MultiAgentProperties(Duration.ofSeconds(5), 3, 500, 2000);
     static final LocalDate START = LocalDate.of(2026, 1, 1);
     static final LocalDate END = LocalDate.of(2026, 1, 30);
     static final JsonMapper JSON = new JsonMapper();
+
+    @Test void advisorToolLimitIsLoggedSafelyEvenWhenAllEightExecutedToolsSucceeded() throws Exception {
+        try(var fixture=new cn.watsonzhu.runagent.evaluation.EvaluationFixtures()) {
+            var rounds=new AtomicInteger();
+            ChatModel model=model(prompt->{
+                int round=rounds.getAndIncrement();
+                var calls=new ArrayList<AssistantMessage.ToolCall>();
+                if(round==0) {
+                    calls.add(new AssistantMessage.ToolCall("summary","function","getRunningSummary","{}"));
+                    calls.add(new AssistantMessage.ToolCall("recent","function","getRecentRuns","{\"limit\":5}"));
+                    for(String distance:List.of("FIVE_K","TEN_K","HALF_MARATHON","MARATHON"))
+                        calls.add(new AssistantMessage.ToolCall("pb-"+distance,"function","getPersonalBest","{\"distanceType\":\""+distance+"\"}"));
+                } else {
+                    for(int i=0;i<3;i++)calls.add(new AssistantMessage.ToolCall("duplicate-"+i,"function","getRunningSummary","{}"));
+                }
+                return new ChatResponse(List.of(new Generation(AssistantMessage.builder().content("").toolCalls(calls).build())));
+            });
+            var tools=org.springframework.ai.support.ToolCallbacks.from(new cn.watsonzhu.runagent.tool.RunningTools(fixture.running));
+            var agent=new RunningAnalystAgent(model,fixture.prompts,()->tools,manager(),PROPERTIES,ObservationRegistry.NOOP);
+            var trace=trace(Specialist.RUNNING_ANALYST,START,END,null);
+            var logger=(ch.qos.logback.classic.Logger)org.slf4j.LoggerFactory.getLogger(ToolSpecialistClient.class);
+            var events=new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();
+            events.start();logger.addAppender(events);
+            try {
+                assertThatThrownBy(()->agent.analyze("PRIVATE_QUESTION","PRIVATE_TASK",START,END,trace)).isInstanceOf(MultiAgentException.class);
+            } finally {logger.detachAppender(events);events.stop();}
+            assertThat(rounds.get()).isEqualTo(2);
+            assertThat(trace.successfulToolCalls()).isEqualTo(8);
+            assertThat(trace.hasFailure()).isFalse();
+            assertThat(events.list).anySatisfy(event->assertThat(event.getFormattedMessage()).contains("reason=TOOL_CALL_LIMIT","successfulToolCalls=8"));
+            assertThat(events.list).allSatisfy(event->{assertThat(event.getFormattedMessage()).doesNotContain("PRIVATE");assertThat(event.getThrowableProxy()).isNull();});
+        }
+    }
 
     @Test void runningLoopHasOnlyRunningToolsAndEnforcesExplicitDateHints() {
         var seen = new ArrayList<Prompt>();

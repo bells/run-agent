@@ -93,7 +93,7 @@ public class ApiExceptionHandler {
         HttpStatus status = switch (exception.kind()) {
             case INVALID_REQUEST -> HttpStatus.BAD_REQUEST;
             case TIMEOUT -> HttpStatus.GATEWAY_TIMEOUT;
-            case DEPENDENCY_UNAVAILABLE, INSUFFICIENT_EVIDENCE -> HttpStatus.SERVICE_UNAVAILABLE;
+            case DEPENDENCY_UNAVAILABLE, INSUFFICIENT_EVIDENCE, BUDGET_EXCEEDED -> HttpStatus.SERVICE_UNAVAILABLE;
             case INVALID_SUPERVISOR_DECISION, EXECUTION_FAILED -> HttpStatus.BAD_GATEWAY;
         };
         return response(status, "MULTI_AGENT_" + exception.kind().name(), exception.getMessage(), exchange);

@@ -2,7 +2,7 @@ package cn.watsonzhu.runagent.exception;
 
 public final class MultiAgentException extends RuntimeException {
     public enum Kind { INVALID_REQUEST, INVALID_SUPERVISOR_DECISION, DEPENDENCY_UNAVAILABLE,
-        INSUFFICIENT_EVIDENCE, TIMEOUT, EXECUTION_FAILED }
+        INSUFFICIENT_EVIDENCE, BUDGET_EXCEEDED, TIMEOUT, EXECUTION_FAILED }
     private final Kind kind;
 
     public MultiAgentException(Kind kind) {
@@ -11,6 +11,7 @@ public final class MultiAgentException extends RuntimeException {
             case INVALID_SUPERVISOR_DECISION -> "The supervisor returned an invalid delegation decision";
             case DEPENDENCY_UNAVAILABLE -> "Required specialist evidence is temporarily unavailable";
             case INSUFFICIENT_EVIDENCE -> "No successful specialist evidence is available";
+            case BUDGET_EXCEEDED -> "The multi-agent execution budget was exceeded";
             case TIMEOUT -> "The multi-agent request timed out";
             case EXECUTION_FAILED -> "The multi-agent request could not produce a valid answer";
         }, null, false, false);

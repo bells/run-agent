@@ -22,7 +22,7 @@ Java 21 / Spring Boot / Spring AI
 
 ## 当前阶段
 
-当前版本是 v0.9（0.9.0-SNAPSHOT），已经实现：
+当前版本是 v0.10（0.10.0-SNAPSHOT），阶段为 Performance / Cost Governance，已经实现：
 
 - `POST /api/chat`：普通 Chat。
 - `GET /api/chat/stream`：UTF-8 SSE Streaming Chat。
@@ -172,6 +172,23 @@ Controller -> RunAgentService -> ChatClient -> LLM
 - Offline Evaluation 标 SCRIPTED_MULTI_AGENT_CONTRACT，使用合成数据、真实循环 Graph 和隔离 clients。不能据此声称真实 Supervisor 质量。
 - 没有 retry、并行 Specialist、peer-to-peer network、动态 Agent、Multi-Agent Memory 或在线 Judge。
 
+## v0.10 Performance Governance
+
+- Performance governance applies primarily to multi-agent execution; other API model semantics remain unchanged.
+- Performance optimization must be measured against the same evaluation dataset. Do not trade quality for lower latency without reporting the regression.
+- Model names come only from trusted configuration. All tiers use the existing OpenAI-compatible gateway; no multi-provider routing.
+- BASELINE is default and uses DEFAULT plus existing context bounds. Both modes enforce the new absolute output/call safety guards. OPTIMIZED stage/context limits are experimental, not universal best values.
+- Stage reasoning effort is optional trusted configuration, OPTIMIZED only and PROVIDER_DEFAULT by default. Never mutate shared model options or disable reasoning globally; verify gateway support and distinguish requested effort from actual reasoning usage.
+- Unknown usage is UNKNOWN, never zero. Unknown price produces UNKNOWN cost. Ambiguous normalized zero completion without explicit native usage is UNKNOWN.
+- Execution budget is task-wide and never resets on handoff. Reuse MultiAgentExecutionControl deadline and existing delegation limit.
+- Model-call budget must count internal ToolCallingAdvisor model calls. One final synthesis call is reserved.
+- Install/clear ExecutionScope in each graph node via local RunnableConfig metadata. Never send budgets to MCP or retain executions in a global map.
+- No parallel Agent execution in v0.10. No hidden provider retry. No sensitive prompt/tool/report content in performance telemetry.
+- PerformanceSnapshot is internal; do not add model/tokens/cost to MultiAgentResponse. Metric tags use fixed stage/tier/status/reason only.
+- performanceBenchmark is offline SYNTHETIC_CONTRACT; livePerformanceBenchmark requires its own explicit flag and explicit AI_GATEWAY_* environment. Neither belongs to test/build.
+- Both benchmark types use committed synthetic Running/RAG/Weather and the same versioned seven multi-agent cases. Never load private local config/data/index for benchmark.
+- Report quality, latency, actual calls, usage/cost completeness together. A passing scripted contract does not prove real-model answer quality or a performance gain.
+
 ## 配置与安全
 
 - 模型通过 Spring AI OpenAI Chat 客户端连接 OpenAI 兼容端点；`AI_GATEWAY_BASE_URL`、`AI_GATEWAY_API_KEY`、`AI_GATEWAY_MODEL` 在启动时选择 DeepSeek、OpenRouter 或本地 Ollama。旧 `DEEPSEEK_*` 和本地 profile 中 `spring.ai.deepseek.*` 仅作为过渡回退。
@@ -205,7 +222,8 @@ v0.5 RAG
 v0.6 MCP
 v0.7 Workflow / LangGraph4j
 v0.8 Evaluation / Observability
-v0.9 Multi-Agent (current)
+v0.9 Multi-Agent
+v0.10 Performance / Cost Governance (current)
 ```
 
 每一阶段都应先确认学习目标和最小可验证闭环，再增加依赖与抽象。

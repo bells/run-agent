@@ -5,7 +5,7 @@ plugins {
 }
 
 group = 'cn.watsonzhu'
-version = '0.9.0-SNAPSHOT'
+version = '0.10.0-SNAPSHOT'
 
 java {
     toolchain {
@@ -72,4 +72,18 @@ tasks.register('liveEvaluation', JavaExec) {
     systemProperty 'logback.configurationFile', file('src/test/resources/logback-evaluation.xml').absolutePath
     mainClass = 'cn.watsonzhu.runagent.evaluation.LiveEvaluationRunner'
     args layout.buildDirectory.dir('reports/run-agent-evaluation/live').get().asFile.absolutePath, project.version.toString()
+}
+
+// Independent test-source runners. Neither task is a dependency of test/check/build.
+['performanceBenchmark': false, 'livePerformanceBenchmark': true].each { taskName, live ->
+    tasks.register(taskName, JavaExec) {
+        group = 'verification'
+        description = live ? 'Opt-in live models with synthetic dependencies only.' : 'Offline synthetic performance governance contract.'
+        dependsOn testClasses
+        classpath = sourceSets.test.runtimeClasspath
+        systemProperty 'logback.configurationFile', file('src/test/resources/logback-evaluation.xml').absolutePath
+        mainClass = 'cn.watsonzhu.runagent.performance.PerformanceBenchmark'
+        args layout.buildDirectory.dir(live ? 'reports/run-agent-performance/live' : 'reports/run-agent-performance').get().asFile.absolutePath,
+                project.version.toString(), live ? 'live' : 'offline'
+    }
 }

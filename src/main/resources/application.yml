@@ -53,6 +53,9 @@ server:
     include-stacktrace: never
 
 run-agent:
+  private-chat:
+    enabled: ${RUN_AGENT_PRIVATE_CHAT_ENABLED:false}
+    token: ${RUN_AGENT_PRIVATE_CHAT_TOKEN:}
   reliability:
     enabled: ${RELIABILITY_ENABLED:false}
     retry:

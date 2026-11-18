@@ -1,0 +1,45 @@
+services:
+  run-agent:
+    image: ${RUN_AGENT_IMAGE:?Set the release image}
+    pull_policy: never
+    restart: unless-stopped
+    mem_limit: 768m
+    read_only: true
+    tmpfs:
+      - /tmp:mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    env_file:
+      - ${RUN_AGENT_PROVIDER_FILE:?Set the provider environment file}
+      - path: ${RUN_AGENT_PRIVATE_FILE:?Set the optional private-chat environment path}
+        required: false
+    environment:
+      SPRING_PROFILES_ACTIVE: ""
+      SERVER_ADDRESS: "0.0.0.0"
+      SERVER_PORT: "8080"
+      MANAGEMENT_PORT: "9091"
+      RUNNING_TOOL_PROVIDER: local
+      RUNNING_DATA_PATH: /data/activities.json
+      RAG_ENABLED: "false"
+    ports:
+      - "127.0.0.1:18080:8080"
+    volumes:
+      - type: bind
+        source: ${RUN_AGENT_DATA_DIR:?Set the activity export directory}
+        target: /data
+        read_only: true
+        bind:
+          create_host_path: false
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--max-time", "3", "http://127.0.0.1:9091/actuator/health"]
+      start_period: 20s
+      interval: 5s
+      timeout: 4s
+      retries: 5
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

@@ -21,6 +21,7 @@ import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.metadata.EmptyUsage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.model.tool.ToolCallLimitExceededException;
+import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
@@ -66,6 +67,20 @@ public class RunAgentService {
         } catch (RuntimeException exception) {
             log.warn("AI chat request failed after {} ms", elapsedMillis(startedAt));
             throw new AiRequestException("Chat model invocation failed", exception);
+        }
+    }
+
+    public String privateChat(String message) {
+        try {
+            return chatClient.prompt()
+                    .system(prompts.chatSystemPrompt()
+                            + "\nThis entry has no access to personal running data. For personal statistics, say the data is unavailable.")
+                    .user(message)
+                    .options(OpenAiChatOptions.builder().maxTokens(1500))
+                    .call()
+                    .content();
+        } catch (RuntimeException exception) {
+            throw new AiRequestException("Private chat model invocation failed", exception);
         }
     }
 

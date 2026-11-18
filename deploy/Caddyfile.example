@@ -1,0 +1,15 @@
+run-api.watsonzhu.cn {
+	@privateChat {
+		method POST
+		path /api/v1/chat
+	}
+	handle @privateChat {
+		request_body {
+			max_size 32KB
+		}
+		reverse_proxy 127.0.0.1:18080
+	}
+	handle {
+		respond 404
+	}
+}

@@ -1,0 +1,49 @@
+services:
+  run-agent:
+    network_mode: host
+    ports: !reset []
+    volumes: !reset []
+    environment:
+      SPRING_PROFILES_ACTIVE: mcp
+      SERVER_ADDRESS: "127.0.0.1"
+      SERVER_PORT: "18080"
+      RUNNING_TOOL_PROVIDER: mcp
+      RUNNING_MCP_URL: http://127.0.0.1:8090
+    depends_on:
+      running-mcp:
+        condition: service_healthy
+  running-mcp:
+    image: ${RUN_AGENT_MCP_IMAGE:?Set the MCP release image}
+    pull_policy: never
+    network_mode: host
+    restart: unless-stopped
+    mem_limit: 384m
+    read_only: true
+    tmpfs:
+      - /tmp:mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      RUNNING_MCP_BIND_ADDRESS: "127.0.0.1"
+      RUNNING_MCP_PORT: "8090"
+      RUNNING_DATA_PATH: /data/activities.json
+    volumes:
+      - type: bind
+        source: ${RUN_AGENT_DATA_DIR:?Set the activity export directory}
+        target: /data
+        read_only: true
+        bind:
+          create_host_path: false
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8090"]
+      start_period: 15s
+      interval: 4s
+      timeout: 3s
+      retries: 5
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

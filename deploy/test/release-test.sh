@@ -48,6 +48,7 @@ release_a=aaaaaaaaaaaa-001122334455
 release_b=bbbbbbbbbbbb-001122334455
 release_c=cccccccccccc-001122334455
 release_initial_failure=dddddddddddd-001122334455
+release_mcp=eeeeeeeeeeee-001122334455
 
 bundle() {
   local release=$1
@@ -97,5 +98,16 @@ assert_state "$release_c" "$release_a"
 [[ $(head -n 1 "$RUN_AGENT_TEST_LOG") == "up run-agent:$release_a" ]]
 bash "$deploy_dir/remote-release.sh" rollback
 assert_state "$release_a" "$release_c"
+
+bundle "$release_mcp"
+mcp_stage="$workspace/$release_mcp"
+touch "$mcp_stage/compose.mcp.yaml" "$mcp_stage/running-mcp.jar"
+printf '0123456789abcdef0123456789abcdef01234567\n' > "$mcp_stage/mcp-revision"
+tar -C "$mcp_stage" -cf - release-id compose.yaml Dockerfile run-agent.jar compose.mcp.yaml \
+  running-mcp.jar mcp-revision | bash "$deploy_dir/remote-release.sh" deploy-mcp
+assert_state "$release_mcp" "$release_a"
+grep -Fx "RUN_AGENT_MCP_IMAGE=running-mcp-server:$release_mcp" "$state/releases/$release_mcp/release.env"
+bash "$deploy_dir/remote-release.sh" rollback
+assert_state "$release_a" "$release_mcp"
 
 printf 'Release and rollback tests passed\n'

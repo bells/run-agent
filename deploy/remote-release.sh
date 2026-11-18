@@ -44,12 +44,15 @@ compose() {
   shift
   valid_release "$release" || fail "Invalid release ID."
   local directory="$releases/$release"
-  docker compose --project-name "$project" --env-file "$directory/release.env" \
-    -f "$directory/compose.yaml" "$@"
+  local files=(-f "$directory/compose.yaml")
+  if [[ -f $directory/compose.mcp.yaml ]]; then
+    files+=(-f "$directory/compose.mcp.yaml")
+  fi
+  docker compose --project-name "$project" --env-file "$directory/release.env" "${files[@]}" "$@"
 }
 
 activate() {
-  compose "$1" up --detach --wait --wait-timeout 75
+  compose "$1" up --detach --remove-orphans --wait --wait-timeout 90
 }
 
 record() {
@@ -124,11 +127,11 @@ case "${1:-}" in
   platform)
     docker_platform
     exit ;;
-  deploy|rollback) ;;
-  *) fail "Expected check, platform, deploy or rollback." ;;
+  deploy|deploy-mcp|rollback) ;;
+  *) fail "Expected check, platform, deploy, deploy-mcp or rollback." ;;
 esac
 
-unset RUN_AGENT_IMAGE
+unset RUN_AGENT_IMAGE RUN_AGENT_MCP_IMAGE
 [[ -f $RUN_AGENT_PROVIDER_FILE && -O $RUN_AGENT_PROVIDER_FILE && ! -L $RUN_AGENT_PROVIDER_FILE ]] \
   || fail "Create an owned provider.env at $RUN_AGENT_PROVIDER_FILE before deploying."
 
@@ -163,15 +166,28 @@ if [[ -z $current && -n $(docker ps -aq --filter "label=com.docker.compose.proje
 fi
 
 stage=$(mktemp -d "$releases/.upload.XXXXXXXX")
-tar -xf - -C "$stage" release-id compose.yaml Dockerfile run-agent.jar
+bundle_files=(release-id compose.yaml Dockerfile run-agent.jar)
+if [[ $1 == deploy-mcp ]]; then
+  bundle_files+=(compose.mcp.yaml running-mcp.jar mcp-revision)
+fi
+tar -xf - -C "$stage" "${bundle_files[@]}"
 candidate=$(cat "$stage/release-id")
 valid_release "$candidate" || fail "Invalid incoming release ID."
 [[ ! -e $releases/$candidate ]] || fail "Release $candidate already exists."
 
 image="run-agent:$candidate"
 docker build --tag "$image" --label "org.opencontainers.image.version=$candidate" "$stage"
-rm -- "$stage/run-agent.jar" "$stage/Dockerfile"
 printf 'RUN_AGENT_IMAGE=%s\n' "$image" > "$stage/release.env"
+if [[ $1 == deploy-mcp ]]; then
+  mcp_revision=$(cat "$stage/mcp-revision")
+  [[ $mcp_revision =~ ^[a-f0-9]{40}$ ]] || fail "Invalid MCP source revision."
+  mcp_image="running-mcp-server:$candidate"
+  docker build --tag "$mcp_image" --build-arg APP_JAR=running-mcp.jar \
+    --label "org.opencontainers.image.revision=$mcp_revision" "$stage"
+  printf 'RUN_AGENT_MCP_IMAGE=%s\n' "$mcp_image" >> "$stage/release.env"
+  rm -- "$stage/running-mcp.jar"
+fi
+rm -- "$stage/run-agent.jar" "$stage/Dockerfile"
 mv -- "$stage" "$releases/$candidate"
 stage=
 switch_to "$candidate"

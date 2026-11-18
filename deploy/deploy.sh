@@ -6,6 +6,7 @@ usage() {
 Usage:
   deploy/deploy.sh check <ssh-target>
   deploy/deploy.sh deploy <ssh-target> [git-ref]
+  deploy/deploy.sh deploy-mcp <ssh-target> <running-mcp-server-repo> [git-ref]
   deploy/deploy.sh rollback <ssh-target>
   deploy/deploy.sh sync-data <ssh-target> <activities.json>
 
@@ -17,7 +18,7 @@ USAGE
 
 mode=${1:-}
 target=${2:-}
-[[ -n $target && $# -le 3 ]] || usage
+[[ -n $target && $# -le 4 ]] || usage
 
 deploy_dir=$(cd "$(dirname "$0")" && pwd)
 encoded_script=$(base64 < "$deploy_dir/remote-release.sh" | tr -d '\n')
@@ -31,6 +32,7 @@ remote() {
     set --
   fi
   ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 \
+    -o ServerAliveInterval=15 -o ServerAliveCountMax=3 \
     "$@" -- "$target" "$command"
 }
 
@@ -39,7 +41,16 @@ case "$mode" in
     [[ $# == 2 ]] || usage
     remote "$mode"
     exit ;;
-  deploy) ;;
+  deploy)
+    [[ $# -le 3 ]] || usage
+    ref=${3:-HEAD}
+    ;;
+  deploy-mcp)
+    [[ $# -ge 3 ]] || usage
+    mcp_repo=$(git -C "$3" rev-parse --show-toplevel)
+    mcp_revision=$(git -C "$mcp_repo" rev-parse --verify 'HEAD^{commit}')
+    ref=${4:-HEAD}
+    ;;
   sync-data)
     [[ $# == 3 ]] || usage
     snapshot=$(mktemp)
@@ -58,26 +69,38 @@ case "$platform" in
 esac
 
 repo_dir=$(git -C "$deploy_dir" rev-parse --show-toplevel)
-revision=$(git -C "$repo_dir" rev-parse --verify --end-of-options "${3:-HEAD}^{commit}")
+revision=$(git -C "$repo_dir" rev-parse --verify --end-of-options "$ref^{commit}")
 release="${revision:0:12}-$(openssl rand -hex 6)"
 workspace=$(mktemp -d)
 trap 'rm -rf -- "$workspace"' EXIT
-mkdir "$workspace/source" "$workspace/release"
+mkdir "$workspace/release"
 
-git -C "$repo_dir" archive "$revision" | tar -xf - -C "$workspace/source"
-(
-  cd "$workspace/source"
-  ./gradlew --no-daemon build
-)
-jar=
-for candidate in "$workspace/source"/build/libs/*.jar; do
-  [[ -f $candidate && $candidate != *-plain.jar ]] || continue
-  [[ -z $jar ]] || { printf 'More than one executable JAR found.\n' >&2; exit 1; }
-  jar=$candidate
-done
-[[ -n $jar ]] || { printf 'No executable JAR found.\n' >&2; exit 1; }
-cp "$jar" "$workspace/release/run-agent.jar"
+build_jar() {
+  local repository=$1 commit=$2 name=$3
+  local source="$workspace/$name"
+  mkdir "$source"
+  git -C "$repository" archive "$commit" | tar -xf - -C "$source"
+  (cd "$source" && ./gradlew --no-daemon build)
+  local jar= candidate
+  for candidate in "$source"/build/libs/*.jar; do
+    [[ -f $candidate && $candidate != *-plain.jar ]] || continue
+    [[ -z $jar ]] || { printf 'More than one executable JAR found.\n' >&2; exit 1; }
+    jar=$candidate
+  done
+  [[ -n $jar ]] || { printf 'No executable JAR found.\n' >&2; exit 1; }
+  cp "$jar" "$workspace/release/$name.jar"
+}
+
+build_jar "$repo_dir" "$revision" run-agent
 cp "$deploy_dir/Dockerfile" "$deploy_dir/compose.yaml" "$workspace/release/"
 printf '%s\n' "$release" > "$workspace/release/release-id"
 
-tar -C "$workspace/release" -cf - release-id compose.yaml Dockerfile run-agent.jar | remote deploy
+if [[ $mode == deploy-mcp ]]; then
+  build_jar "$mcp_repo" "$mcp_revision" running-mcp
+  printf '%s\n' "$mcp_revision" > "$workspace/release/mcp-revision"
+  cp "$deploy_dir/compose.mcp.yaml" "$workspace/release/"
+  tar -C "$workspace/release" -cf - release-id compose.yaml Dockerfile run-agent.jar \
+    compose.mcp.yaml running-mcp.jar mcp-revision | remote deploy-mcp
+else
+  tar -C "$workspace/release" -cf - release-id compose.yaml Dockerfile run-agent.jar | remote deploy
+fi

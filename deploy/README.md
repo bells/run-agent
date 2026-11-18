@@ -41,3 +41,11 @@ ssh -N -L 127.0.0.1:18081:127.0.0.1:18080 run-agent-hk
 ```
 
 导出器保留 Run 记录的活动 ID、类型、距离、时长和本地日期字段。SSH 传输完整后原子替换数据文件，容器从只读目录读数据。更新数据无需重启。
+
+## 同机 Running MCP Server
+
+```bash
+./deploy/deploy.sh deploy-mcp run-agent-hk /path/to/running-mcp-server
+```
+
+此模式从 Running MCP Server 仓库的 `HEAD` 构建第二个镜像，两个进程使用 Linux 主机网络并绑定回环。MCP 在 `127.0.0.1:8090/mcp` 提供工具，独自挂载数据目录。RunAgent API 仍使用 `127.0.0.1:18080`。更新 MCP 版本时用同一命令重新发布，以便 RunAgent 在启动时重新发现工具。回滚会按上一次健康发布的配置恢复单服务或双服务。

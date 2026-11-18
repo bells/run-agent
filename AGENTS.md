@@ -22,7 +22,7 @@ Java 21 / Spring Boot / Spring AI
 
 ## 当前阶段
 
-当前版本是 v0.10（0.10.0-SNAPSHOT），阶段为 Performance / Cost Governance，已经实现：
+当前版本是 v0.11（0.11.0-SNAPSHOT），阶段为 Reliability / Failure Governance，已经实现：
 
 - `POST /api/chat`：普通 Chat。
 - `GET /api/chat/stream`：UTF-8 SSE Streaming Chat。
@@ -41,7 +41,10 @@ Java 21 / Spring Boot / Spring AI
 
 - v0.9 新增 `POST /api/multi-agent/training-advice`，使用有界循环 StateGraph 的 Supervisor / 三个 Specialist / Handoff、能力隔离、压缩报告、失败隔离以及独立 Evaluation / Observation。详见 `docs/multi-agent.md`。
 
-当前不实现自定义 Agent Loop、长期 Memory、数据库、Hybrid Search、Reranker、RAG Tool、Agentic RAG、Checkpoint Persistence、Workflow Streaming/Resume/并行、Retry Graph、复杂认证或生产 Evaluation/Observability 平台。后续能力必须按版本目标逐步加入。
+- v0.10 新增任务级 Performance/Cost Governance：模型路由、逐轮调用/输出/软Token预算、真实Usage与UNKNOWN成本、独立Benchmark；详见 `docs/performance.md`。
+- v0.11 新增默认关闭的 Failure Classification、单Owner有界Retry、CircuitBreaker、Bulkhead与确定性降级；Workflow独立opt-in官方MemorySaver恢复。详见 `docs/reliability.md`。
+
+当前不实现自定义 Agent Loop、长期 Memory、数据库、Hybrid Search、Reranker、RAG Tool、Agentic RAG、Checkpoint Persistence、Workflow Streaming/并行、Retry Graph、复杂认证或生产 Evaluation/Observability 平台。后续能力必须按版本目标逐步加入。
 
 ## 已验证技术基线
 
@@ -139,7 +142,7 @@ Controller -> RunAgentService -> ChatClient -> LLM
 - Running 节点使用当前 provider；local 复用 RunningDataService，mcp 只通过 McpCatalog 已过滤 callback，不创建本地 service，不重新发现，不手写 JSON-RPC。
 - RAG 节点复用 KnowledgeSearchService.retrieveDocuments 和现有 TopK/threshold/索引；不通过 QA Advisor 隐藏检索。关闭、故障或零召回均 fail fast。
 - Analysis 使用独立 ChatClient，不注册 Tools、Memory、QA Advisor，并关闭 Spring AI 2.0.1 ToolCallingAdvisor 自动注册。拒绝模型意外的 Tool Call。
-- 现有 Workflow 不启用 Saver/Checkpoint Persistence、Retry、Resume、并行节点、Weather 或 Multi-Agent 编排、LLM Judge。
+- 默认 Workflow 不启用 Saver/Resume；v0.11 可显式启用官方 MemorySaver 与 Java 恢复服务。仍无持久化 Checkpoint、Workflow Retry/并行节点、Weather 或 Multi-Agent 编排、LLM Judge。
 - Graph/MCP/LLM 阻塞调用在 boundedElastic 执行，WORKFLOW_TIMEOUT 默认 60s；只是 deadline + best-effort cancellation。每订阅独立的 WorkflowExecutionControl 通过本地 RunnableConfig metadata 传递，节点前后检查统一 deadline/取消标记，即使底层吞掉 interrupt 也不启动后续节点。
 - Trace 不复用 AgentExecutionTrace；只记录 workflowExecutionId、node、phase/status、latencyMs。框架 Graph 日志关闭，不能打开后泄露 State、正文或 Prompt。
 
@@ -170,7 +173,7 @@ Controller -> RunAgentService -> ChatClient -> LLM
 - Specialist trace 独立于 AgentExecutionTrace。MCP 仍使用 noOp converter 和空委托上下文，本地 MethodToolCallback 只接收固定非空 marker。
 - runagent.multi_agent / specialist 使用固定低基数 outcome/specialist，executionId 仅 high-cardinality；delegations 每请求最终记录一次。
 - Offline Evaluation 标 SCRIPTED_MULTI_AGENT_CONTRACT，使用合成数据、真实循环 Graph 和隔离 clients。不能据此声称真实 Supervisor 质量。
-- 没有 retry、并行 Specialist、peer-to-peer network、动态 Agent、Multi-Agent Memory 或在线 Judge。
+- 默认没有 retry；v0.11 opt-in ReliabilityExecutor 可对依赖做有限 retry。仍无并行 Specialist、peer-to-peer network、动态 Agent、Multi-Agent Memory 或在线 Judge。
 
 ## v0.10 Performance Governance
 
@@ -223,7 +226,26 @@ v0.6 MCP
 v0.7 Workflow / LangGraph4j
 v0.8 Evaluation / Observability
 v0.9 Multi-Agent
-v0.10 Performance / Cost Governance (current)
+v0.10 Performance / Cost Governance
+v0.11 Reliability / Failure Governance (current)
 ```
 
 每一阶段都应先确认学习目标和最小可验证闭环，再增加依赖与抽象。
+
+
+## v0.11 Reliability / Failure Governance
+
+- Reliability is opt-in by default (`RELIABILITY_ENABLED=false`); protect Multi-Agent model/MCP attempts without globally changing Chat/Streaming/Intent/Agent semantics.
+- Exactly one application retry owner: programmatic ReliabilityExecutor. `spring.ai.openai.max-retries` stays 0. No retry annotations/AOP or additional TimeLimiter.
+- Retries consume the same execution deadline and ExecutionBudget. Every actual LLM retry consumes another model-call slot, including internal ToolCallingAdvisor rounds. Preserve the final Synthesis call.
+- Failed calls without returned usage/cost remain UNKNOWN, never zero. Circuit/Bulkhead rejections do not reserve model calls.
+- Retry-safe tools must be explicitly classified by accepted dependency + original name. Current Running/Weather three tools each are read-only; unknown/null/new tools are not retry-safe. No Host local fallback in MCP mode.
+- Typed exception/status/cause classification only, never exception-message parsing. Unknown is not retryable; RAG does not retry by default.
+- Circuit breakers are dependency-scoped across requests, never execution-scoped. Ignore input/output/budget/cancel/task-deadline failures. Bulkheads use semaphores and fail fast. Backoff never holds permits.
+- Fallback decisions are deterministic Java policy, not extra LLM calls. Partial successful evidence may degrade; missing evidence must never be invented. Supervisor Route and Synthesis remain critical; never concatenate private reports as fallback.
+- Checkpoint is independently opt-in (`RELIABILITY_CHECKPOINT_ENABLED=false`). Official LangGraph4j MemorySaver; threadId=workflow executionId. No public resume endpoint or persistent Multi-Agent checkpoint.
+- Checkpoint excludes question/prompt/raw RAG/raw Running JSON/GPS/tool context/answer/exception. Keep only mode/dates/safe RunningSummary/executedNodes/analysisStatus plus executionId. Sensitive ephemeral context is capped64 sessions,30min idle expiry, explicit forget, JVM-only.
+- Resume must not re-execute checkpoint-completed nodes; a new explicit resume invocation gets one new deadline. Checkpoint does not replace idempotency. No write tools/durable idempotency store in this version.
+- No prompt/tool/evidence/exception-body content enters reliability telemetry. Metric tags are fixed dependency/category/outcome/action/phase; IDs remain high-cardinality only in existing spans/logs.
+- Fault injection belongs in test sources. `reliabilityVerification` is offline JavaExec, independent of test/build; no real-provider rate-limit/timeout injection. Isolate registries per verification case.
+- Use the same seven synthetic Multi-Agent cases for enabled/disabled quality and model-call regression. Scripted passing does not prove real-model quality or latency gain.

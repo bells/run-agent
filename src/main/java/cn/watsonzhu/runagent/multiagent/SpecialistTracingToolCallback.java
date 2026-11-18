@@ -1,5 +1,9 @@
 package cn.watsonzhu.runagent.multiagent;
 
+import cn.watsonzhu.runagent.reliability.Dependency;
+import cn.watsonzhu.runagent.reliability.ReliabilityDeadline;
+import cn.watsonzhu.runagent.reliability.ReliabilityExecutor;
+import cn.watsonzhu.runagent.reliability.ReliableToolCallback;
 import java.time.Duration;
 import java.util.Map;
 import cn.watsonzhu.runagent.exception.MultiAgentException;
@@ -21,7 +25,15 @@ public final class SpecialistTracingToolCallback implements ToolCallback {
     private static final JsonMapper JSON = new JsonMapper();
     private final ToolCallback delegate;
 
-    public SpecialistTracingToolCallback(ToolCallback delegate) { this.delegate = delegate; }
+    private final ReliabilityExecutor reliability;
+    private final Dependency dependency;
+    private final String originalName;
+    public SpecialistTracingToolCallback(ToolCallback delegate) { this(delegate, null, null, delegate.getToolDefinition().name()); }
+    public SpecialistTracingToolCallback(ToolCallback delegate,
+            ReliabilityExecutor reliability,
+            Dependency dependency, String originalName) {
+        this.delegate = delegate; this.reliability = reliability; this.dependency = dependency; this.originalName = originalName;
+    }
     @Override public ToolDefinition getToolDefinition() { return delegate.getToolDefinition(); }
     @Override public ToolMetadata getToolMetadata() { return delegate.getToolMetadata(); }
     @Override public String call(String input) { return call(input, null); }
@@ -38,7 +50,14 @@ public final class SpecialistTracingToolCallback implements ToolCallback {
             // Remote adapters still receive an empty context, with the existing noOp MCP converter.
             Map<String, Object> localContext = delegate instanceof MethodToolCallback
                     ? Map.of("requestType", "multi-agent") : Map.of();
-            String result = delegate.call(enforceHints(input, trace), new ToolContext(localContext));
+            String arguments = enforceHints(input, trace);
+            ToolCallback protectedCallback = reliability == null || dependency == null ? delegate
+                    : new ReliableToolCallback(delegate, dependency, originalName, reliability,
+                        new ReliabilityDeadline() {
+                            public void checkActive() { trace.control().checkActive(); }
+                            public Duration remaining() { return trace.control().remaining(); }
+                        });
+            String result = protectedCallback.call(arguments, new ToolContext(localContext));
             trace.control().checkActive();
             if (result == null || result.isBlank() || remoteError(result))
                 throw new MultiAgentException(MultiAgentException.Kind.DEPENDENCY_UNAVAILABLE);

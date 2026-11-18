@@ -29,11 +29,14 @@ public final class ExecutionBudget {
         try { control.checkActive(); }
         catch (MultiAgentException exception) { reasons.add(BudgetReason.DEADLINE); throw exception; }
     }
-    public synchronized void reserve(ModelStage stage) {
+    public synchronized void checkCanCall(ModelStage stage) {
         checkActive();
         if (stage != ModelStage.SUPERVISOR_SYNTHESIS && softBudgetExceeded) fail(BudgetReason.SOFT_TOKENS);
         int available = properties.maxModelCalls() - modelCalls;
         if (available < 1 || stage != ModelStage.SUPERVISOR_SYNTHESIS && available <= 1) fail(BudgetReason.MODEL_CALLS);
+    }
+    public synchronized void reserve(ModelStage stage) {
+        checkCanCall(stage);
         modelCalls++;
     }
     private void fail(BudgetReason reason) { reasons.add(reason); throw new MultiAgentException(MultiAgentException.Kind.BUDGET_EXCEEDED); }

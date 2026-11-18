@@ -9,6 +9,9 @@ import cn.watsonzhu.runagent.model.TrainingAnalysisRequest;
 import cn.watsonzhu.runagent.model.TrainingAnalysisResponse;
 import cn.watsonzhu.runagent.workflow.node.*;
 import org.bsc.langgraph4j.CompiledGraph;
+import org.bsc.langgraph4j.CompileConfig;
+import org.springframework.beans.factory.annotation.Autowired;
+import cn.watsonzhu.runagent.reliability.recovery.WorkflowRecoveryService;
 import org.bsc.langgraph4j.GraphStateException;
 import org.bsc.langgraph4j.StateGraph;
 import org.bsc.langgraph4j.RunnableConfig;
@@ -23,11 +26,20 @@ public class TrainingAnalysisWorkflow {
     private final CompiledGraph<TrainingAnalysisState> graph;
     private final WorkflowProperties properties;
     private final RunAgentObservation observations;
+    private final WorkflowRecoveryService recovery;
 
     public TrainingAnalysisWorkflow(ValidateInputNode validate, RunningDataNode running, KnowledgeRetrievalNode knowledge,
                                     AnalysisNode analysis, ValidateOutputNode output, WorkflowProperties properties, RunAgentObservation observations) {
+        this(validate, running, knowledge, analysis, output, properties, observations, new WorkflowRecoveryService(false));
+    }
+
+    @Autowired
+    public TrainingAnalysisWorkflow(ValidateInputNode validate, RunningDataNode running, KnowledgeRetrievalNode knowledge,
+                                    AnalysisNode analysis, ValidateOutputNode output, WorkflowProperties properties,
+                                    RunAgentObservation observations, WorkflowRecoveryService recovery) {
         this.observations = observations;
         this.properties = properties;
+        this.recovery = recovery;
         try {
             this.graph = new StateGraph<>(TrainingAnalysisState.SCHEMA, TrainingAnalysisState::new)
                     .addNode("validateInput", traced("validateInput", validate))
@@ -43,7 +55,9 @@ public class TrainingAnalysisWorkflow {
                     .addEdge("retrieveKnowledge", "analyze")
                     .addEdge("analyze", "validateOutput")
                     .addEdge("validateOutput", StateGraph.END)
-                    .compile();
+                    .compile(recovery.enabled() ? CompileConfig.builder().checkpointSaver(recovery.saver()).build()
+                            : CompileConfig.builder().build());
+            recovery.bind(this::invokeGraph, properties.timeout());
         } catch (GraphStateException exception) {
             throw new IllegalStateException("Training workflow graph could not be compiled");
         }
@@ -54,18 +68,29 @@ public class TrainingAnalysisWorkflow {
     }
 
     public TrainingAnalysisResponse execute(TrainingAnalysisRequest request, WorkflowExecutionControl control) {
+        if (recovery.enabled()) {
+            return recovery.run(recovery.create(request), control);
+        }
         String executionId = UUID.randomUUID().toString();
-        return observations.workflow(executionId, request.mode() == null ? null : request.mode().name(),
-                () -> execute(request, control, executionId));
+        return invokeGraph(executionId, request, control, false);
     }
 
-    private TrainingAnalysisResponse execute(TrainingAnalysisRequest request, WorkflowExecutionControl control, String executionId) {
+    private TrainingAnalysisResponse invokeGraph(String executionId, TrainingAnalysisRequest request, WorkflowExecutionControl control, boolean resume) {
+        return observations.workflow(executionId, request.mode() == null ? null : request.mode().name(),
+                () -> invokeGraphObserved(executionId, request, control, resume));
+    }
+
+    private TrainingAnalysisResponse invokeGraphObserved(String executionId, TrainingAnalysisRequest request, WorkflowExecutionControl control, boolean resume) {
         try {
             control.checkActive();
-            var state = graph.invoke(TrainingAnalysisState.initial(request, executionId,
-                    control.deadlineNanos()), RunnableConfig.builder().addMetadata(WorkflowExecutionControl.CONFIG_KEY, control).build())
+            Map<String, Object> input = resume ? null : TrainingAnalysisState.initial(request, executionId);
+            if (input != null && recovery.enabled()) input.remove("question");
+            var config = RunnableConfig.builder().addMetadata(WorkflowExecutionControl.CONFIG_KEY, control);
+            if (recovery.enabled()) config.threadId(executionId);
+            var state = graph.invoke(input, config.build())
                     .orElseThrow(() -> new WorkflowException(WorkflowException.Kind.EXECUTION_FAILED));
-            return new TrainingAnalysisResponse(executionId, state.mode(), state.executedNodes(), state.analysis());
+            return recovery.enabled() ? recovery.response(state)
+                    : new TrainingAnalysisResponse(executionId, state.mode(), state.executedNodes(), state.analysis());
         } catch (RuntimeException exception) {
             // Async graph boundaries can wrap the domain exception. Never log the wrapper or its state.
             Throwable cause = exception;
@@ -82,7 +107,8 @@ public class TrainingAnalysisWorkflow {
         return AsyncNodeActionWithConfig.node_async((state, config) -> WorkflowExecutionTrace.run(state,
                 (WorkflowExecutionControl) config.metadata(WorkflowExecutionControl.CONFIG_KEY).orElseThrow(), name, observations, () -> {
             try {
-                return action.apply(state);
+                var update = action.apply(recovery.enabled() ? recovery.hydrate(state) : state);
+                return recovery.enabled() ? recovery.safeUpdate(state.executionId(), update) : update;
             } catch (RuntimeException exception) {
                 throw exception;
             } catch (Exception exception) {

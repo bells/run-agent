@@ -13,6 +13,7 @@ public final class MultiAgentExecutionControl {
     private final long deadlineNanos;
 
     public MultiAgentExecutionControl(Duration timeout) { deadlineNanos = System.nanoTime() + timeout.toNanos(); }
+    public Duration remaining() { return Duration.ofNanos(Math.max(0, deadlineNanos - System.nanoTime())); }
     public void cancel() { cancelled.set(true); }
     public boolean isCancelled() { return cancelled.get(); }
     public int delegationCount() { return delegations.get(); }

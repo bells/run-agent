@@ -53,6 +53,29 @@ server:
     include-stacktrace: never
 
 run-agent:
+  reliability:
+    enabled: ${RELIABILITY_ENABLED:false}
+    retry:
+      max-attempts: ${RELIABILITY_RETRY_MAX_ATTEMPTS:2}
+      initial-delay: ${RELIABILITY_RETRY_INITIAL_DELAY:200ms}
+      multiplier: ${RELIABILITY_RETRY_MULTIPLIER:2.0}
+      max-delay: ${RELIABILITY_RETRY_MAX_DELAY:1s}
+      jitter: ${RELIABILITY_RETRY_JITTER:0.25}
+    circuit-breaker:
+      sliding-window-size: 10
+      minimum-number-of-calls: 5
+      failure-rate-threshold: 50
+      wait-duration-in-open-state: 30s
+      permitted-calls-in-half-open-state: 2
+    bulkhead:
+      llm:
+        max-concurrent-calls: ${RELIABILITY_LLM_MAX_CONCURRENT:8}
+      running-mcp:
+        max-concurrent-calls: ${RELIABILITY_RUNNING_MAX_CONCURRENT:4}
+      weather-mcp:
+        max-concurrent-calls: ${RELIABILITY_WEATHER_MAX_CONCURRENT:4}
+    checkpoint:
+      enabled: ${RELIABILITY_CHECKPOINT_ENABLED:false}
   running-tools:
     provider: ${RUNNING_TOOL_PROVIDER:local}
   rag:

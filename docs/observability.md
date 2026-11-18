@@ -192,3 +192,10 @@ Observability告诉我们“发生了什么”，Governance规定“允许消耗
 逐轮安全日志增加finishReason固定枚举、outputChars（Unicode code point计数）与nullable reasoningTokens。后者仅采集原始SDK已报告且不超过completion的子集，不读取推理文本、不重复计费；未返回明细显示UNKNOWN。任意Provider结束标记不原样写日志，统一映射安全枚举。这些数值用于区分正文长度、生成截断与可能的推理消费，不把字符数转换成伪精确Token，也不据缺失明细断言模型开启了推理模式。
 
 启动/逐轮日志额外包含固定枚举reasoningEffort，模型Observation增加低基数model.reasoning_effort。它表示受信配置请求的策略，不是Provider实际消费证明；NONE下缺失reasoningTokens仍UNKNOWN。只有OPTIMIZED显式Stage配置覆盖推理选项，默认及BASELINE保持原值；实际生效与质量需人工真实复测，详见[阶段推理策略](performance.md#按阶段配置推理策略)。
+
+
+## v0.11 Reliability Observability
+
+新增runagent.reliability.attempts（真实依赖attempt，dependency/outcome/failureCategory）、retry（准备backoff的重试）、degraded（部分证据综合成功）、circuit.rejected、bulkhead.rejected、recovery（START/RESUME与SUCCESS/FAILURE）。复用Resilience4j原生circuitbreaker/bulkhead/retry metrics，固定依赖名，没有按executionId建registry。Scheduled retry遇取消时可能没有第二个actual attempt，不能把两个Counter混为一谈。
+
+与runagent.performance.model.calls及既有Stage/Graph spans联合判断增加的延迟和调用；失败provider attempt没有Usage时仍UNKNOWN，不补零。executionId/conversationId、query、location、工具参数/结果、exception message、endpoint URL均不得作Meter tag；不新增包含原始异常的可靠性span。所有敏感采集false、AI error sanitizer与安全VectorStore convention继续有效。官方MemorySaver的state和raw evidence均不写telemetry；恢复只计固定phase/outcome。见[配置与边界](reliability.md)。本次只运行合成内存/回环验证，未做真实供应商与Jaeger/Prometheus端到端复验。

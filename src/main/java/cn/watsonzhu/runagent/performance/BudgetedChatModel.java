@@ -16,8 +16,13 @@ public final class BudgetedChatModel implements ChatModel {
     private final ChatModel delegate;
     private final ModelStage stage;
     private final ObservationRegistry observations;
+    private final boolean classifyDependencyFailures;
     public BudgetedChatModel(ChatModel delegate, ModelStage stage, ObservationRegistry observations) {
+        this(delegate,stage,observations,false);
+    }
+    public BudgetedChatModel(ChatModel delegate, ModelStage stage, ObservationRegistry observations, boolean classifyDependencyFailures) {
         this.delegate = delegate; this.stage = stage; this.observations = observations;
+        this.classifyDependencyFailures = classifyDependencyFailures;
     }
     @Override public ChatOptions getOptions() { return delegate.getOptions(); }
     @Override public ChatResponse call(Prompt prompt) {
@@ -50,6 +55,8 @@ public final class BudgetedChatModel implements ChatModel {
         } catch (RuntimeException exception) {
             budget.checkActive();
             if (exception instanceof MultiAgentException failure) throw failure;
+            if (classifyDependencyFailures) throw new cn.watsonzhu.runagent.reliability.ReliabilityFailure(
+                    new cn.watsonzhu.runagent.reliability.FailureClassifier().classify(exception));
             throw new MultiAgentException(MultiAgentException.Kind.EXECUTION_FAILED);
         } finally {
             var record = budget.collector().record(stage, route, response, Duration.ofNanos(System.nanoTime() - started), status);

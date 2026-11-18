@@ -147,3 +147,10 @@ Performance optimization must pass Evaluation first. Faster ≠ Better。先在�
 `./gradlew evaluation`保持27个case，Tool/RAG/Workflow与Multi-Agent原门槛不变。基准14个样本不是新增14个Evaluation case。离线模型的固定Usage、价格与2ms delay只验证治理和报告，不能推导真实优化比例。
 
 显式live基准使用真实模型但仍是合成依赖，默认每case每mode一轮warmup及三轮测量。检查路由/完成/工具契约，不自动启用Judge；自然语言groundedness、训练建议质量与真实四书表现仍需单独评估。详见[Performance](performance.md)。
+
+
+## v0.11 Reliability Verification / Fault Injection
+
+可靠性必须验证失败路径，不能只有成功测试。`./gradlew reliabilityVerification`为独立test-source JavaExec，使用deterministic fault injection、合成本机HTTP Gateway、真实循环Graph的部分/全部故障策略、真实MemorySaver resume；不读取本地私有配置/数据/书籍/索引，不访问公共MCP。每case新建隔离registry，Circuit历史不会污染正常case。报告JSON/Markdown位于build/reports/run-agent-reliability，包含真实attempt与单位、期望/实际动作、安全reasonCode、预算/隐私gate。
+
+相同七个版本化Multi-Agent case在可靠性开启/关闭时比较agentsUsed、成功集合、工具与能力隔离及模型调用数。Healthy path不增加calls；这是SCRIPTED合成契约，不证明真实Supervisor质量。普通evaluation仍必须通过，performanceBenchmark也保持v0.10预算/质量契约；三类任务均不属于test/build依赖。详见[可靠性文档](reliability.md)、[v0.11验证](v0.11-verification.md)。

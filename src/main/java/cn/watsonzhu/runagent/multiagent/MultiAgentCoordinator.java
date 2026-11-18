@@ -1,5 +1,10 @@
 package cn.watsonzhu.runagent.multiagent;
 
+import org.springframework.beans.factory.annotation.Autowired;
+import cn.watsonzhu.runagent.reliability.FallbackAction;
+import cn.watsonzhu.runagent.reliability.FallbackPolicy;
+import cn.watsonzhu.runagent.reliability.ReliabilityExecutor;
+import cn.watsonzhu.runagent.reliability.ReliabilityFailure;
 import java.util.ArrayList;
 import cn.watsonzhu.runagent.performance.*;
 import java.util.List;
@@ -34,9 +39,18 @@ public class MultiAgentCoordinator {
     private final MultiAgentProperties properties;
     private final RunAgentObservation observations;
     private final PerformanceGovernance performance;
+    private final ReliabilityExecutor reliability;
+    private final FallbackPolicy fallback = new FallbackPolicy();
 
     public MultiAgentCoordinator(SupervisorAgent supervisor, RunningAnalystAgent running, KnowledgeCoachAgent knowledge,
                                   WeatherAdvisorAgent weather, MultiAgentProperties properties, RunAgentObservation observations, PerformanceGovernance performance) {
+        this(supervisor, running, knowledge, weather, properties, observations, performance, null);
+    }
+    @Autowired
+    public MultiAgentCoordinator(SupervisorAgent supervisor, RunningAnalystAgent running, KnowledgeCoachAgent knowledge,
+            WeatherAdvisorAgent weather, MultiAgentProperties properties, RunAgentObservation observations,
+            PerformanceGovernance performance, ReliabilityExecutor reliability) {
+        this.reliability = reliability;
         this.supervisor = supervisor;
         this.running = running;
         this.knowledge = knowledge;
@@ -161,6 +175,7 @@ public class MultiAgentCoordinator {
         } catch (RuntimeException exception) {
             control.checkActive();
             status = exception instanceof MultiAgentException failure && failure.kind() == MultiAgentException.Kind.DEPENDENCY_UNAVAILABLE
+                    || exception instanceof ReliabilityFailure
                     ? SpecialistStatus.UNAVAILABLE : SpecialistStatus.FAILED;
         }
         log.info("multiAgentExecutionId={} agent={} status={}", state.executionId(), agent.nodeName(), status);
@@ -185,6 +200,11 @@ public class MultiAgentCoordinator {
                         state.executionId(), status, java.time.Duration.ofNanos(System.nanoTime() - started).toMillis());
             }
         });
+        if (reliability != null && reliability.enabled()
+                && fallback.decide(state) == FallbackAction.DEGRADE) {
+            reliability.degraded(FallbackAction.DEGRADE);
+            answer = answer + "\n\n" + fallback.limitations(state);
+        }
         return Map.of("finalAnswer", answer, "delegationPath", List.of("synthesize"));
     }
     private Map<String, Object> validateOutput(MultiAgentState state, MultiAgentExecutionControl control) {
@@ -192,8 +212,9 @@ public class MultiAgentCoordinator {
         if (state.finalAnswer().isBlank()) throw new MultiAgentException(MultiAgentException.Kind.EXECUTION_FAILED);
         return Map.of();
     }
-    private static void requireEvidence(MultiAgentState state) {
-        if (!state.hasEvidence()) throw new MultiAgentException(MultiAgentException.Kind.INSUFFICIENT_EVIDENCE);
+    private void requireEvidence(MultiAgentState state) {
+        if (fallback.decide(state) == FallbackAction.FAIL)
+            throw new MultiAgentException(MultiAgentException.Kind.INSUFFICIENT_EVIDENCE);
     }
     private static void validateRequest(MultiAgentRequest request) {
         if (request == null || request.question() == null || request.question().isBlank() || request.question().length() > 4000

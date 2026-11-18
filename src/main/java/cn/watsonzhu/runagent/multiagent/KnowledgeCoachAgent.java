@@ -1,5 +1,11 @@
 package cn.watsonzhu.runagent.multiagent;
 
+import org.springframework.beans.factory.annotation.Autowired;
+import cn.watsonzhu.runagent.reliability.Dependency;
+import cn.watsonzhu.runagent.reliability.OperationSafety;
+import cn.watsonzhu.runagent.reliability.ReliabilityDeadline;
+import cn.watsonzhu.runagent.reliability.ReliabilityExecutor;
+import cn.watsonzhu.runagent.reliability.ReliableChatModel;
 import java.util.UUID;
 import cn.watsonzhu.runagent.performance.*;
 import cn.watsonzhu.runagent.config.MultiAgentProperties;
@@ -22,9 +28,17 @@ public class KnowledgeCoachAgent {
     private final PromptCatalog prompts;
     private final KnowledgeSearchService search;
     private final MultiAgentProperties properties;
+    private final ReliabilityExecutor reliability;
     public KnowledgeCoachAgent(ChatModel model, PromptCatalog prompts, KnowledgeSearchService search,
                                 MultiAgentProperties properties, ObservationRegistry observations) {
-        this.client = ChatClient.builder(new BudgetedChatModel(model, ModelStage.KNOWLEDGE_COACH, observations), observations, null, null).build();
+        this(model, prompts, search, properties, observations, null);
+    }
+    @Autowired
+    public KnowledgeCoachAgent(ChatModel model, PromptCatalog prompts, KnowledgeSearchService search,
+            MultiAgentProperties properties, ObservationRegistry observations,
+            ReliabilityExecutor reliability) {
+        this.reliability = reliability;
+        this.client = ChatClient.builder(reliability == null ? new BudgetedChatModel(model, ModelStage.KNOWLEDGE_COACH, observations) : new ReliableChatModel(model, ModelStage.KNOWLEDGE_COACH, observations, reliability), observations, null, null).build();
         this.prompts = prompts;
         this.search = search;
         this.properties = properties;
@@ -35,7 +49,13 @@ public class KnowledgeCoachAgent {
         if (!isAvailable()) throw new MultiAgentException(MultiAgentException.Kind.DEPENDENCY_UNAVAILABLE);
         try {
             String queryId = UUID.randomUUID().toString();
-            var documents = search.retrieveDocuments(queryId, task);
+            var documents = reliability == null ? search.retrieveDocuments(queryId, task)
+                    : reliability.execute(Dependency.RAG,
+                        OperationSafety.READ_ONLY,
+                        new ReliabilityDeadline() {
+                            public void checkActive() { control.checkActive(); }
+                            public java.time.Duration remaining() { return control.remaining(); }
+                        }, () -> search.retrieveDocuments(queryId, task));
             control.checkActive();
             String evidence = new ContextBudgetPolicy(ExecutionScope.require().properties()).knowledgeEvidence(documents);
             if (evidence.isBlank()) throw new MultiAgentException(MultiAgentException.Kind.DEPENDENCY_UNAVAILABLE);

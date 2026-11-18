@@ -37,7 +37,18 @@ public final class MultiAgentScenario {
     private final MultiAgentCoordinator coordinator;
     private final ChatModel liveModel;
     private final ExecutionBudget budget;
+    private final Map<String,RuntimeException> dependencyFaults;
+    private final Map<String,AtomicInteger> dependencyAttempts = new java.util.concurrent.ConcurrentHashMap<>();
     public MultiAgentScenario(EvaluationFixtures fixture, MultiAgentScript script, PerformanceProperties performance, ChatModel liveModel, Duration timeout) {
+        this(fixture,script,performance,liveModel,timeout,null);
+    }
+    public MultiAgentScenario(EvaluationFixtures fixture, MultiAgentScript script, PerformanceProperties performance, ChatModel liveModel, Duration timeout,
+            cn.watsonzhu.runagent.reliability.ReliabilityExecutor reliability) {
+        this(fixture,script,performance,liveModel,timeout,reliability,Map.of());
+    }
+    public MultiAgentScenario(EvaluationFixtures fixture, MultiAgentScript script, PerformanceProperties performance, ChatModel liveModel, Duration timeout,
+            cn.watsonzhu.runagent.reliability.ReliabilityExecutor reliability, Map<String,RuntimeException> dependencyFaults) {
+        this.dependencyFaults=Map.copyOf(dependencyFaults);
         if(script==null)throw new IllegalArgumentException("Missing independent model script");
         this.liveModel=liveModel;
         var properties=new MultiAgentProperties(timeout,3,2500,2000);
@@ -52,6 +63,7 @@ public final class MultiAgentScenario {
             public ToolDefinition getToolDefinition(){return callback.getToolDefinition();}
             public String call(String input){
                 attemptedToolRoles.add("running");
+                dependencyAttempts.computeIfAbsent("running",key->new AtomicInteger()).incrementAndGet();
                 String result;
                 try { result=callback.call(input,new org.springframework.ai.chat.model.ToolContext(Map.of("requestType","multi-agent"))); }
                 catch(RuntimeException exception) { toolChecks.add(false); throw exception; }
@@ -60,21 +72,25 @@ public final class MultiAgentScenario {
                 return result;
             }
         }).toArray(ToolCallback[]::new);
-        var running=new RunningAnalystAgent(toolModel("running"),fixture.prompts,()->callbacks,manager,properties,ObservationRegistry.NOOP);
+        var running=new RunningAnalystAgent(toolModel("running"),fixture.prompts,()->callbacks,manager,properties,ObservationRegistry.NOOP,reliability,new RunningToolProperties("local"));
         var weatherTools=List.of("openmeteo_search_locations","openmeteo_get_forecast","openmeteo_get_air_quality").stream().map(name->weatherTool(name,script)).toArray(ToolCallback[]::new);
-        var weather=new WeatherAdvisorAgent(toolModel("weather"),fixture.prompts,()->weatherTools,manager,properties,ObservationRegistry.NOOP);
+        var weather=new WeatherAdvisorAgent(toolModel("weather"),fixture.prompts,()->weatherTools,manager,properties,ObservationRegistry.NOOP,reliability);
         KnowledgeSearchService search=fixture.search;
         if("KNOWLEDGE_COACH".equals(script.failedSpecialist())) {
             search=mock(KnowledgeSearchService.class);when(search.isAvailable()).thenReturn(true);
-            when(search.retrieveDocuments(anyString(),anyString())).thenThrow(new MultiAgentException(MultiAgentException.Kind.DEPENDENCY_UNAVAILABLE));
+            when(search.retrieveDocuments(anyString(),anyString())).thenAnswer(invocation->{
+                dependencyAttempts.computeIfAbsent("knowledge",key->new AtomicInteger()).incrementAndGet();
+                throw dependencyFaults.getOrDefault("knowledge",new MultiAgentException(MultiAgentException.Kind.DEPENDENCY_UNAVAILABLE));
+            });
         }
-        var knowledge=new KnowledgeCoachAgent(model("knowledge",p->answer("Synthetic training principles from retrieved evidence.")),fixture.prompts,search,properties,ObservationRegistry.NOOP);
+        var knowledge=new KnowledgeCoachAgent(model("knowledge",p->answer("Synthetic training principles from retrieved evidence.")),fixture.prompts,search,properties,ObservationRegistry.NOOP,reliability);
         var observations=ObservationTestSupport.noop();
-        coordinator=new MultiAgentCoordinator(new SupervisorAgent(supervisor,fixture.prompts,ObservationRegistry.NOOP),running,knowledge,weather,properties,observations,new PerformanceGovernance(performance,observations));
+        coordinator=new MultiAgentCoordinator(new SupervisorAgent(supervisor,fixture.prompts,ObservationRegistry.NOOP,reliability),running,knowledge,weather,properties,observations,new PerformanceGovernance(performance,observations),reliability);
     }
     public MultiAgentResponse execute(MultiAgentCase item) {
         return coordinator.executeBudgeted(new MultiAgentRequest(item.question(),LocalDate.parse(item.startDate()),LocalDate.parse(item.endDate()),item.location()),budget);
     }
+    public int dependencyAttempts(String role) {return dependencyAttempts.getOrDefault(role,new AtomicInteger()).get();}
     public PerformanceSnapshot snapshot(){return PerformanceSnapshot.capture(budget,new CostEstimator(budget.properties().pricing()));}
     public Set<String> successful(){return Set.copyOf(successful);}
     public boolean isolated(){return !isolation.isEmpty() && isolation.stream().allMatch(Boolean::booleanValue);}
@@ -117,11 +133,12 @@ public final class MultiAgentScenario {
                     "{\"type\":\"object\",\"properties\":{\"latitude\":{\"type\":\"number\"},\"longitude\":{\"type\":\"number\"}},\"required\":[\"latitude\",\"longitude\"]}").build();}
             public String call(String input){
                 attemptedToolRoles.add("weather");
+                dependencyAttempts.computeIfAbsent("weather",key->new AtomicInteger()).incrementAndGet();
                 var args=EvaluationFixtures.JSON.readTree(input);
                 boolean valid=search?"Synthetic City".equals(args.path("name").asText()):args.path("latitude").asDouble()==1 && args.path("longitude").asDouble()==2;
                 toolChecks.add(valid);
                 if(!valid)throw new IllegalArgumentException("Synthetic tool contract failed");
-                if("WEATHER_ADVISOR".equals(script.failedSpecialist()))throw new IllegalStateException("synthetic dependency unavailable");
+                if("WEATHER_ADVISOR".equals(script.failedSpecialist()))throw dependencyFaults.getOrDefault("weather",new IllegalStateException("synthetic dependency unavailable"));
                 return search?"{\"latitude\":1,\"longitude\":2}":"{\"temperature\":18,\"synthetic\":true}";
             }
         };

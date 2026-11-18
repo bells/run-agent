@@ -5,7 +5,7 @@ plugins {
 }
 
 group = 'cn.watsonzhu'
-version = '0.10.0-SNAPSHOT'
+version = '0.11.0-SNAPSHOT'
 
 java {
     toolchain {
@@ -41,6 +41,14 @@ dependencies {
     implementation 'org.springframework.ai:spring-ai-autoconfigure-vector-store-observation'
     implementation 'org.springframework.ai:spring-ai-tika-document-reader'
     implementation 'org.bsc.langgraph4j:langgraph4j-core:1.8.27'
+    implementation 'io.github.resilience4j:resilience4j-retry:2.4.0'
+    implementation 'io.github.resilience4j:resilience4j-circuitbreaker:2.4.0'
+    implementation 'io.github.resilience4j:resilience4j-bulkhead:2.4.0'
+    implementation('io.github.resilience4j:resilience4j-micrometer:2.4.0') {
+        exclude group: 'io.github.resilience4j', module: 'resilience4j-timelimiter'
+        exclude group: 'io.github.resilience4j', module: 'resilience4j-ratelimiter'
+    }
+
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'io.projectreactor:reactor-test'
@@ -86,4 +94,14 @@ tasks.register('liveEvaluation', JavaExec) {
         args layout.buildDirectory.dir(live ? 'reports/run-agent-performance/live' : 'reports/run-agent-performance').get().asFile.absolutePath,
                 project.version.toString(), live ? 'live' : 'offline'
     }
+}
+
+tasks.register('reliabilityVerification', JavaExec) {
+    group = 'verification'
+    description = 'Offline deterministic reliability, budget, degradation and checkpoint contracts (not part of build).'
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    systemProperty 'logback.configurationFile', file('src/test/resources/logback-evaluation.xml').absolutePath
+    mainClass = 'cn.watsonzhu.runagent.reliability.ReliabilityVerification'
+    args layout.buildDirectory.dir('reports/run-agent-reliability').get().asFile.absolutePath, project.version.toString()
 }

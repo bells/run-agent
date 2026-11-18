@@ -1,4 +1,4 @@
-# RunAgent v0.10
+# RunAgent v0.11
 
 RunAgent 是 Watson 的个人跑步 AI 后端与 Java / Spring AI 学习项目。它与 [Watson Running](https://github.com/bells/watson-running) 独立构建和部署。
 
@@ -61,7 +61,7 @@ LIVE_PERFORMANCE_BENCHMARK_ENABLED=true ./gradlew livePerformanceBenchmark
 
 Live 也只使用合成 Running / RAG / Weather，没有读取私有配置、真实活动或四书索引。报告位于 `build/reports/run-agent-performance/`；合成 Usage、价格与延迟不能证明真实模型更快或更便宜。历史真实三源请求耗时122.532s，Knowledge模型56.170s、Synthesis23.342s，仍完整保留在 [v0.9验证](docs/v0.9-verification.md)。
 
-详见 [Performance学习手册与配置](docs/performance.md)、[v0.10验证记录](docs/v0.10-verification.md)。性能优化必须通过同一数据集的质量门槛；当前无并行Agent、跨Provider路由、重试、缓存平台或生产计费。
+详见 [Performance学习手册与配置](docs/performance.md)、[v0.10验证记录](docs/v0.10-verification.md)。性能优化必须通过同一数据集的质量门槛；v0.11新增显式opt-in的单Owner有限重试，默认关闭。仍无并行Agent、跨Provider路由、缓存平台或生产计费。
 
 ## Multi-Agent v0.9
 
@@ -371,4 +371,45 @@ curl -X POST http://localhost:8080/api/knowledge/search \
 | v0.7 | Workflow / LangGraph4j |
 | v0.8 | Evaluation / Observability |
 | v0.9 | Supervisor / Specialist / Handoff / 有界循环 Multi-Agent |
-| v0.10 | Performance / Cost Governance（当前） |
+| v0.10 | Performance / Cost Governance |
+| v0.11 | Reliability / Failure Governance（当前） |
+
+
+## Reliability / Failure Governance v0.11
+
+可靠性默认关闭，只有 `RELIABILITY_ENABLED=true` 才启用 Multi-Agent 依赖保护。采用程序化 Resilience4j 2.4.0：Failure Classification、最多两次attempt的Backoff/Jitter、dependency-scoped CircuitBreaker、fail-fast Semaphore Bulkhead。每次真实LLM retry继续消耗同一ExecutionBudget/deadline，保留最终Synthesis额度；SDK max-retries保持0。部分证据允许明确降级，全部证据失败安全终止。
+
+```text
+RunAgent
+├── Agent / Multi-Agent
+├── Performance Governance: Budget / Routing / Usage / Cost
+├── Reliability Governance: Failure / Retry / Circuit / Bulkhead / Degradation / Recovery
+├── Evaluation
+└── Observability
+```
+
+Workflow checkpoint由独立 `RELIABILITY_CHECKPOINT_ENABLED=true` 开启。使用官方MemorySaver和真实resume，只保存安全中间结果；JVM重启后不可恢复。Java恢复服务支持失败位置继续，不新增公共HTTP入口、不改变原有成功payload。
+
+```bash
+./gradlew test
+./gradlew build
+./gradlew evaluation
+./gradlew performanceBenchmark
+./gradlew reliabilityVerification
+```
+
+| Capability | 核心问题 |
+| --- | --- |
+| Tool Calling | 模型调用什么能力？ |
+| Agent Loop | 单Agent下一步做什么？ |
+| Memory | 之前聊过什么？ |
+| RAG | 外部知识是什么？ |
+| MCP | 能力如何标准化提供？ |
+| Workflow | 应用如何确定性编排？ |
+| Evaluation | 系统做得对不对？ |
+| Observability | 执行过程中发生什么？ |
+| Multi-Agent | 多个Agent如何协作？ |
+| Performance | 怎样更快、更省？ |
+| Reliability | 依赖失败时怎样安全继续或快速失败？ |
+
+详见[可靠性学习手册](docs/reliability.md)、[v0.11验证记录](docs/v0.11-verification.md)。故障验证使用合成模型/工具、回环HTTP网关和合成RAG，完全不依赖真实模型、个人数据、书籍或公共MCP；合成通过不证明真实模型质量或生产性能。

@@ -1,5 +1,7 @@
 package cn.watsonzhu.runagent.multiagent;
 
+import cn.watsonzhu.runagent.reliability.Dependency;
+import cn.watsonzhu.runagent.reliability.ReliabilityExecutor;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.Set;
@@ -28,12 +30,20 @@ final class ToolSpecialistClient {
 
     ToolSpecialistClient(ChatModel model, ToolCallbackProvider tools, Set<String> allowed, ToolCallingManager manager,
                          MultiAgentProperties properties, ObservationRegistry observations) {
-        ToolCallback[] snapshot = tools.getToolCallbacks();
+        this(model, tools, allowed, manager, properties, observations, null, null);
+    }
+    ToolSpecialistClient(ChatModel model, ToolCallbackProvider tools, Set<String> allowed, ToolCallingManager manager,
+                         MultiAgentProperties properties, ObservationRegistry observations,
+                         ReliabilityExecutor reliability,
+                         Dependency dependency) {
+        ToolCallback[] snapshot = Arrays.stream(tools.getToolCallbacks()).map(callback ->
+                reliability != null && reliability.enabled() && callback instanceof StructuredWeatherToolCallback weather
+                        ? weather.withFailureClassification() : callback).toArray(ToolCallback[]::new);
         var names = Arrays.stream(snapshot).map(ToolSpecialistClient::originalToolName).toList();
         if (!allowed.containsAll(names) || names.stream().distinct().count() != names.size())
             throw new IllegalArgumentException("Unexpected specialist capability");
         this.available = Set.copyOf(names).equals(allowed);
-        this.callbacks = Arrays.stream(snapshot).map(SpecialistTracingToolCallback::new).toArray(ToolCallback[]::new);
+        this.callbacks = Arrays.stream(snapshot).map(callback -> new SpecialistTracingToolCallback(callback, reliability, dependency, originalToolName(callback))).toArray(ToolCallback[]::new);
         this.client = ChatClient.builder(model, observations, null, null,
                 ToolCallingAdvisor.builder().toolCallingManager(manager)).build();
         this.properties = properties;

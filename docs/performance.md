@@ -248,3 +248,8 @@ Quality
 - Context/Output截断与模型换tier可能降低质量，只有实际Evaluation与Live对照才能接受优化。
 
 未来只在测量和质量证据支持时考虑收紧预算、调整Stage策略或并行；不把这些扩展带入v0.10。
+
+
+## v0.11: Retry is real work
+
+可靠性通过ReliableChatModel在BudgetedChatModel外层重试，每次实际attempt继续消耗同一task-wide调用/Token/deadline预算，最终Synthesis预留保持。Circuit/Bulkhead拒绝未触达模型，不增加modelCalls。失败attempt的缺失Usage/Cost仍UNKNOWN。Retry增加latency、实际calls及可能的token/cost，不能为了成功无限重试。健康路径启用可靠性不增加模型调用；独立验证使用同一七case对照，具体见[可靠性](reliability.md)。原有v0.10历史实测段落原样保留，单样本差异不升级为稳定收益。

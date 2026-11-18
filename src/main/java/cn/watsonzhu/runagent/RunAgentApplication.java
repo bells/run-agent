@@ -13,7 +13,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 /** 启用业务配置绑定。 */
 @SpringBootApplication
 @EnableConfigurationProperties({RunningDataProperties.class, AgentProperties.class, MemoryProperties.class,
-        WorkflowProperties.class, MultiAgentProperties.class, PerformanceProperties.class})
+        WorkflowProperties.class, MultiAgentProperties.class, PerformanceProperties.class, cn.watsonzhu.runagent.reliability.ReliabilityProperties.class})
 public class RunAgentApplication {
 
     public static void main(String[] args) {

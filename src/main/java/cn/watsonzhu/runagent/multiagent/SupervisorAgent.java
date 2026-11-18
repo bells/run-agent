@@ -1,5 +1,8 @@
 package cn.watsonzhu.runagent.multiagent;
 
+import org.springframework.beans.factory.annotation.Autowired;
+import cn.watsonzhu.runagent.reliability.ReliabilityExecutor;
+import cn.watsonzhu.runagent.reliability.ReliableChatModel;
 import java.util.List;
 import cn.watsonzhu.runagent.performance.*;
 import cn.watsonzhu.runagent.exception.MultiAgentException;
@@ -19,8 +22,13 @@ public class SupervisorAgent {
     private final ChatClient synthesisClient;
     private final PromptCatalog prompts;
     public SupervisorAgent(ChatModel model, PromptCatalog prompts, ObservationRegistry observations) {
-        this.routeClient = ChatClient.builder(new BudgetedChatModel(model, ModelStage.SUPERVISOR_ROUTE, observations), observations, null, null).build();
-        this.synthesisClient = ChatClient.builder(new BudgetedChatModel(model, ModelStage.SUPERVISOR_SYNTHESIS, observations), observations, null, null).build();
+        this(model, prompts, observations, null);
+    }
+    @Autowired
+    public SupervisorAgent(ChatModel model, PromptCatalog prompts, ObservationRegistry observations,
+            ReliabilityExecutor reliability) {
+        this.routeClient = ChatClient.builder(reliability == null ? new BudgetedChatModel(model, ModelStage.SUPERVISOR_ROUTE, observations) : new ReliableChatModel(model, ModelStage.SUPERVISOR_ROUTE, observations, reliability), observations, null, null).build();
+        this.synthesisClient = ChatClient.builder(reliability == null ? new BudgetedChatModel(model, ModelStage.SUPERVISOR_SYNTHESIS, observations) : new ReliableChatModel(model, ModelStage.SUPERVISOR_SYNTHESIS, observations, reliability), observations, null, null).build();
         this.prompts = prompts;
     }
     public SupervisorDecision decideNext(MultiAgentState state) {

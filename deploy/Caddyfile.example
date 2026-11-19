@@ -9,6 +9,16 @@ run-api.watsonzhu.cn {
 		}
 		reverse_proxy 127.0.0.1:18080
 	}
+	@runReview {
+		method GET POST
+		path_regexp runReview ^/api/v1/runs/[1-9][0-9]{0,15}/review$
+	}
+	handle @runReview {
+		request_body {
+			max_size 1KB
+		}
+		reverse_proxy 127.0.0.1:18080
+	}
 	handle {
 		respond 404
 	}

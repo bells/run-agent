@@ -58,6 +58,12 @@ run-agent:
     token: ${RUN_AGENT_PRIVATE_CHAT_TOKEN:}
   legacy-api:
     enabled: ${RUN_AGENT_LEGACY_API_ENABLED:true}
+  run-review:
+    enabled: ${RUN_AGENT_RUN_REVIEW_ENABLED:false}
+    generation-enabled: ${RUN_AGENT_RUN_REVIEW_GENERATION_ENABLED:false}
+    evidence-base-url: ${RUN_AGENT_RUN_REVIEW_EVIDENCE_BASE_URL:}
+    directory: ${RUN_AGENT_RUN_REVIEW_DIR:.run-agent/reviews}
+    timeout: ${RUN_AGENT_RUN_REVIEW_TIMEOUT:25s}
   private-training:
     enabled: ${RUN_AGENT_PRIVATE_TRAINING_ENABLED:false}
   reliability:

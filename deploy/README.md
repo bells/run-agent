@@ -12,7 +12,7 @@ AI_GATEWAY_MODEL=deepseek-flash
 AI_GATEWAY_API_KEY=<your-provider-key>
 ```
 
-同机私有 MCP 部署需要 `private-chat.env`，权限为 0600。设置 `RUN_AGENT_PRIVATE_CHAT_ENABLED=true`，并将服务器生成的 48 位十六进制令牌放到 `RUN_AGENT_PRIVATE_CHAT_TOKEN`。可用 `openssl rand -hex 24` 生成令牌。公网代理仅转发 `POST /api/v1/chat` 和 `POST /api/v1/training/stats`，示例见 [Caddyfile.example](Caddyfile.example)。两条路由使用同一私有令牌，模型密钥只留在服务器。训练统计在同机 MCP 部署中启用，统计查询由服务端完成。
+同机私有 MCP 部署需要 `private-chat.env`，权限为 0600。设置 `RUN_AGENT_PRIVATE_CHAT_ENABLED=true`，并将服务器生成的 48 位十六进制令牌放到 `RUN_AGENT_PRIVATE_CHAT_TOKEN`。可用 `openssl rand -hex 24` 生成令牌。公网代理的默认为 `POST /api/v1/chat` 和 `POST /api/v1/training/stats`，单次复盘配置见本页后文，示例见 [Caddyfile.example](Caddyfile.example)。两条路由使用同一私有令牌，模型密钥只留在服务器。训练统计在同机 MCP 部署中启用，统计查询由服务端完成。
 
 ## 发布与回滚
 
@@ -56,3 +56,19 @@ ssh -N -L 127.0.0.1:18081:127.0.0.1:18080 run-agent-hk
 ## 生产探测
 
 `bash deploy/smoke-public.sh` 检查公开首页、汇总页和两条 API 的匿名拒绝。GitHub Actions 定时运行探测。部署后另用受控令牌和合成快照确认统计结果，并验证通用问答。
+
+## 单次跑步复盘
+
+复盘读取和生成使用同一条版本化路径，按 HTTP 方法区分。部署前先用合成发布摘要和替身模型验证分段计算、生成去重和回看。在启用真实训练指标的模型调用前，应确认对应字段的用途与授权，再更新服务端配置。
+
+同机 Compose 为报告准备独立的 `run-reviews` 命名卷，挂载到 `/var/lib/run-agent/reviews`。卷由服务 UID 10001 写入，MCP 活动快照继续使用自己的只读目录。回滚到没有复盘接口的版本时保留卷，恢复支持的版本即可读回。
+
+| 配置 | 用途 |
+| --- | --- |
+| `RUN_AGENT_RUN_REVIEW_ENABLED` | 默认 `false`。启用复盘 API 和已有报告读取。 |
+| `RUN_AGENT_RUN_REVIEW_GENERATION_ENABLED` | 默认 `false`。开启后才允许生成新报告。 |
+| `RUN_AGENT_RUN_REVIEW_EVIDENCE_BASE_URL` | 开启生成时配置 Watson Running 的固定 HTTPS 发布地址。 |
+| `RUN_AGENT_RUN_REVIEW_TIMEOUT` | 生成期限，默认 25 秒。应短于客户端和代理超时。 |
+| `VITE_RUN_AGENT_RUN_REVIEW` | 前端构建开关，默认关闭。 |
+
+代理按 [Caddyfile 示例](Caddyfile.example) 转发数字活动 ID 的 GET 和 POST。验证浏览器同源请求、匿名 401、跨重启回看与停用生成时仍可读已有报告。[复盘规格](../docs/superpowers/specs/2026-11-19-single-run-review-design.md)

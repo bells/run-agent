@@ -6,6 +6,7 @@ import cn.watsonzhu.runagent.model.KnowledgeQuestionRequest;
 import cn.watsonzhu.runagent.model.KnowledgeAnswerResponse;
 import cn.watsonzhu.runagent.rag.KnowledgeQaService;
 import jakarta.validation.Valid;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -15,6 +16,7 @@ import reactor.core.scheduler.Schedulers;
 import java.util.concurrent.TimeoutException;
 
 @RestController
+@ConditionalOnProperty(name = "run-agent.legacy-api.enabled", havingValue = "true", matchIfMissing = true)
 @RequestMapping("/api/knowledge")
 public class KnowledgeController {
     private final KnowledgeQaService service;

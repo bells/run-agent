@@ -1,415 +1,57 @@
-# RunAgent v0.11
+# RunAgent
 
-RunAgent 是 Watson 的个人跑步 AI 后端与 Java / Spring AI 学习项目。它与 [Watson Running](https://github.com/bells/watson-running) 独立构建和部署。
+RunAgent 是 [Watson Running](https://run.watsonzhu.cn/) 的跑步 AI 后端。站点公开展示跑步记录和统计，Classic 界面提供输入访问令牌后使用的跑步问答助手。后端运行在香港服务器，通过 DeepSeek 提供中文跑步问答。
 
-## 能力与边界
+## 线上能力
 
-- `POST /api/chat`：普通 Chat 和简单 Tool-aware Chat。
-- `GET /api/chat/stream`：UTF-8 SSE Chat，保留 `token` 与安全 `error` 事件。
-- `POST /api/intent`：Structured Output，不注册 Running Tools。
-- `POST /api/knowledge/ask`：无状态的跑步书籍 RAG 问答；默认关闭，使用前需启用本地知识库。
-- `POST /api/knowledge/search`：仅 local profile 提供检索调试，返回来源、分数及最多 200 字的 preview。
-- `POST /api/agent`：多步 Tool Calling + 有界 Conversation Memory，返回 `conversationId`、`executionId`、实际执行的 `toolCallCount` 和最终 `content`。
-- `POST /api/multi-agent/training-advice` 通过有界 Supervisor cycle 委派 Running、Knowledge 和 Weather 专业 Agent，能力隔离、无状态、失败可部分隔离。
-- `POST /api/workflows/training-analysis`：LangGraph4j 确定性训练分析，显式选择 Running / Knowledge / Combined；无状态，分析模型没有 Tools 或 Memory。
-
-Tool Calling 使模型能够请求 Java 工具；v0.3 Agent Loop 在一次请求内根据 Tool 结果继续行动。v0.4 让 `/api/agent` 跨请求恢复有限对话上下文。`/api/chat`、`/api/chat/stream` 和 `/api/intent` 仍是无状态接口。
-
-```text
-Client conversationId → POST /api/agent → RunAgentService
-                                              ↓
-                            MessageChatMemoryAdvisor ⇄ MessageWindowChatMemory
-                                              ↓                  ↓
-                                         ChatClient     InMemoryChatMemoryRepository
-                                              ↓
-                                     ToolCallingAdvisor ⇄ LLM
-                                              ↓
-                         MCP ToolCallbacks → MCP Client → Running / Weather MCP
-                         local fallback: RunningTools → RunningDataService
-                                              ↓
-                                          Final Answer
-```
-
-比较两个时间段时，模型应分别调用 `getRunningSummary` 两次；需要个别训练时再调用 `getRecentRuns`。不提供 `compareRunningPeriods`，以便观察根据前一 Observation 作出的下一步决定。完整机制见 [Agent Loop](docs/agent-loop.md)；v0.2 的底层协议学习实验见 [Tool Calling Flow](docs/tool-calling-flow.md)。
-
-## Performance / Cost Governance v0.10
-
-Agent 能工作后，还需要知道真正发生多少次 Model Call、各阶段耗时、Token 与估算成本，并限制一次执行的消耗。默认 `PERFORMANCE_MODE=BASELINE` 保留 v0.9 的 DEFAULT 模型与 Context；`OPTIMIZED` 才启用 Stage Routing 和更短 Context。两个模式都增加1500 Token 的单次输出安全上限、16次模型调用上限及30000 Token软预算，这些是实验起点。
-
-```text
-RunAgent
-├── Agent
-├── Workflow
-├── Multi-Agent
-│   ├── Model Routing
-│   ├── Execution Budget
-│   ├── Token / Context Budget
-│   ├── Usage Collection
-│   └── Cost Estimation
-├── Evaluation → Quality Gate
-└── Observability → Latency / Token / Trace
-```
-
-Stage 专属 `BudgetedChatModel` 统计 ToolCallingAdvisor 每轮真正的模型调用；任务级预算跨 handoff 不重置，并保留最终 Synthesis 一次调用。Usage 不完整明确 UNKNOWN，价格未配置则 Cost UNKNOWN；公开 MultiAgentResponse 保持不变。不会影响其他 API 的模型选择。
-
-```bash
-./gradlew performanceBenchmark      # 离线 SYNTHETIC_CONTRACT，同一7个case × 两个模式
-./gradlew livePerformanceBenchmark  # 默认 SKIPPED，不属于 build
-# 显式 AI_GATEWAY_* 环境就绪后可选：
-LIVE_PERFORMANCE_BENCHMARK_ENABLED=true ./gradlew livePerformanceBenchmark
-```
-
-Live 也只使用合成 Running / RAG / Weather，没有读取私有配置、真实活动或四书索引。报告位于 `build/reports/run-agent-performance/`；合成 Usage、价格与延迟不能证明真实模型更快或更便宜。历史真实三源请求耗时122.532s，Knowledge模型56.170s、Synthesis23.342s，仍完整保留在 [v0.9验证](docs/v0.9-verification.md)。
-
-详见 [Performance学习手册与配置](docs/performance.md)、[v0.10验证记录](docs/v0.10-verification.md)。性能优化必须通过同一数据集的质量门槛；v0.11新增显式opt-in的单Owner有限重试，默认关闭。仍无并行Agent、跨Provider路由、缓存平台或生产计费。
-
-## Multi-Agent v0.9
-
-独立 Supervisor 通过 Structured Output 选择下一 Specialist，每个专业 Agent 用自己的 Prompt、ChatClient 和最小能力形成压缩报告，再 handoff 回 Supervisor。最终统一回答。LangGraph4j Core 保持1.8.27，Graph 在启动时编译一次。
-
-```text
-                       RunAgent
-        ┌─────────────────┼─────────────────┐
-        ▼                 ▼                 ▼
-   Single Agent       Workflow         Multi-Agent
-        │                 │            Supervisor
-        │                 │         ┌───────┼───────┐
-        ▼                 ▼         ▼       ▼       ▼
-      MCP            Running+RAG Running Knowledge Weather
-```
-
-| Capability | 核心问题 |
+| 能力 | 当前状态 |
 | --- | --- |
-| LLM | 模型如何理解和生成？ |
-| Tool Calling | 模型调用什么能力？ |
-| Agent Loop | 单个 Agent 下一步做什么？ |
-| Memory | 之前聊过什么？ |
-| RAG | 外部知识是什么？ |
-| MCP | 能力如何标准化提供？ |
-| Workflow | 应用如何确定性编排？ |
-| Evaluation | 系统做得对不对？ |
-| Observability | 系统运行时发生什么？ |
-| Multi-Agent | 多个专业 Agent 如何协作？ |
-| Performance Governance | 怎样更快、更省且不降低质量？ |
+| 私有跑步问答 | Watson Running 通过同源 `POST /api/v1/chat` 发起请求。API 使用 Bearer 令牌鉴权，并限制并发、请求频率、超时和模型输出长度。 |
+| 我的训练 | 私有统计 API 通过同机 MCP 查询指定区间的跑量、平均配速和近似 PB。查询直接返回可核对的统计。 |
+| 跑步数据工具 | 同机 Running MCP Server 提供训练汇总、最近记录和个人最佳三项只读工具。已用合成数据验证工具发现、调用和重启恢复。 |
+| 发布与回滚 | 前端由 GitHub `main` 触发 Vercel 发布。香港后端使用 Docker Compose，发布脚本记录当前和上一健康版本，支持启动失败恢复与手动回滚。 |
 
-```bash
-curl -X POST http://127.0.0.1:8080/api/multi-agent/training-advice \
-  -H 'Content-Type: application/json' \
-  -d '{"question":"结合训练记录、跑步知识和深圳天气给出训练建议。","startDate":"2026-01-01","endDate":"2026-01-31","location":"深圳"}'
-```
+通用问答由 DeepSeek 提供。个人训练统计通过独立的私有接口读取活动快照。[合成数据演示](docs/training-demo.md)
 
-question 必填，日期与 location 为可选权威提示。日期必须成对，含首尾最多366天。默认 `MULTI_AGENT_TIMEOUT=180s`、`MULTI_AGENT_MAX_DELEGATIONS=3`、`MULTI_AGENT_MAX_REPORT_CHARS=2500`、`MULTI_AGENT_MAX_TASK_CHARS=2000`。每个 Specialist 最多尝试一次，失败也消耗预算。Supervisor 没有工具，Running/Weather 只有各自三项工具，Knowledge 只做显式 RAG retrieval 与独立模型分析。
+部署验收涵盖授权问答、匿名请求拒绝、合成数据工具调用和服务重启恢复。[线上部署验收记录](docs/superpowers/plans/2026-11-18-hong-kong-deployment.md#verification)
 
-RAG 需要现有索引 Ready，Weather 需要启用相应 MCP profile 并成功发现三项工具。未启用的能力标为不可用，单项故障允许使用其他成功证据汇总，全部证据失败返回503。Response 只有 executionId、delegationPath、agentsUsed、delegationCount 和 content。Shared State 仅保留 bounded reports，无 Conversation Memory、Checkpoint、Retry、并行或 peer handoff。
-
-详见 [Multi-Agent 学习手册](docs/multi-agent.md) 和 [v0.9 验证记录](docs/v0.9-verification.md)。简单个人统计继续使用 `/api/agent`，避免增加不必要的模型调用。
-
-## Evaluation / Observability：v0.8
-
-Evaluation 判断“系统做得对不对”，Observability 解释“执行中发生了什么”。本阶段增加版本化合成数据集、独立 JavaExec 评估 Runner、Tool Selection/Arguments、RAG Recall@K/Precision@K/MRR、Workflow Route 与 JSON/Markdown 报告；运行时接入 Actuator、Micrometer、Prometheus、OpenTelemetry/OTLP 和最小业务 Observation。
-
-```bash
-./gradlew test
-./gradlew build
-./gradlew evaluation
-./gradlew liveEvaluation  # 默认关闭；不是 build 的依赖
-```
-
-离线评估报告在 `build/reports/run-agent-evaluation/`。脚本模型下的工具契约回归不等于真实模型选择质量；真实 `liveEvaluation` 必须显式设置 `LIVE_EVALUATION_ENABLED=true` 和 `AI_GATEWAY_*`，仍只使用合成 Running 数据。Judge 默认关闭，仅属于评估管线；无在线 Judge、评估 REST API 或持久化平台。
-
-```bash
-./gradlew bootRun --args='--spring.profiles.active=local,observability --server.address=127.0.0.1'
-```
-
-默认不外发 Trace/OTLP Metrics/Logs，Management 只在回环9091提供 health；observability profile 才开放 metrics/prometheus 并启用本地 Trace。Prompt、Completion、工具内容与检索正文采集关闭，另清洗 VectorStore query 属性和 AI error exception events。Local stack 使用固定版本 Jaeger + Prometheus；Compose 通过宿主机回环端口发布 UI/OTLP，Prometheus 经 host.docker.internal 抓取本机 Management，配置与实测见观测文档。
-
-详见 [Evaluation 学习手册](docs/evaluation.md)、[Observability 学习手册](docs/observability.md) 和 [v0.8 实测记录](docs/v0.8-verification.md)。v0.9 新增独立 Multi-Agent 入口，详见 [Multi-Agent 手册](docs/multi-agent.md)。
-
-## Workflow / LangGraph4j：v0.7
-
-`/api/agent` 由 LLM 决定下一步 Tool；新 Workflow 由 Java / Graph 决定每一步。两者复用能力，但保留独立 API、State 和执行标识。
+## 架构
 
 ```text
-/api/agent                       → Dynamic Agent Loop → Running / Weather MCP
-/api/workflows/training-analysis → LangGraph4j Graph  → Running Capability + RAG + LLM Analysis
-/api/knowledge/*                 → Standalone RAG
+Watson Running（Vercel）
+  └─ POST /api/v1/chat → 同源转发 → Caddy → RunAgent 私有聊天 → DeepSeek
+
+Watson Running「我的训练」及 RunAgent 内部分析入口
+  └─ RunAgent MCP 客户端 → 同机 Running MCP Server → 只读活动快照
 ```
 
-| Capability | 谁控制下一步 | 主要用途 |
-| --- | --- | --- |
-| Agent Loop | LLM | 开放式动态任务 |
-| Workflow | Java / Graph | 明确业务流程 |
-| MCP | Protocol / Capability Provider | 标准化外部能力发现与调用 |
-| RAG | Retriever | 当前问题的外部知识检索 |
-| Memory | Conversation ID | 多轮上下文 |
-
-只引入 `org.bsc.langgraph4j:langgraph4j-core:1.8.27`。2026-10-25 核对 [Maven Central metadata](https://repo.maven.apache.org/maven2/org/bsc/langgraph4j/langgraph4j-core/maven-metadata.xml) 和 [官方 1.8 支持分支](https://github.com/langgraph4j/langgraph4j/tree/support/1.8.x)，这是最新 1.8.x LTS；保持 Java 21 和 Spring AI BOM 2.0.1，不追随 1.9.x 实验特性。
-
-```mermaid
-flowchart TD
-    START --> validateInput
-    validateInput -->|RUNNING_ONLY / COMBINED| fetchRunningData
-    validateInput -->|KNOWLEDGE_ONLY| retrieveKnowledge
-    fetchRunningData -->|RUNNING_ONLY| analyze
-    fetchRunningData -->|COMBINED| retrieveKnowledge
-    retrieveKnowledge --> analyze
-    analyze --> validateOutput
-    validateOutput --> END
-```
-
-```bash
-curl -X POST http://localhost:8080/api/workflows/training-analysis \
-  -H 'Content-Type: application/json' \
-  -d '{"question":"结合跑步汇总和知识库分析训练安排。","mode":"COMBINED","startDate":"2026-09-25","endDate":"2026-10-24"}'
-```
-
-`RUNNING_ONLY` / `COMBINED` 必须提供起止日期，含首尾最多 366 天；`KNOWLEDGE_ONLY` 可以省略两个日期，提供时必须成对且合法。日期按所需分析区间调整。响应只包含 `executionId`、`mode`、`executedNodes`、`content`；不返回 State、检索片段、Prompt 或工具结果。
-
-Running 节点按照 `RUNNING_TOOL_PROVIDER` 使用 local service 或已经通过白名单过滤的 Running MCP callback；MCP 模式不会读取 Host 本地文件。Knowledge 节点复用 `KnowledgeSearchService` 的 TopK/threshold/索引与安全日志，须开启 `RAG_ENABLED=true` 并准备可用索引。Analysis 只解释已收集证据；不会自行选 Tool、重新检索或访问 Conversation Memory。
-
-默认 `WORKFLOW_TIMEOUT=60s`，是应用 deadline 和尽力取消。必需证据不可用、零召回、模型失败或空答复会安全失败，不降级为模型常识。Weather 继续属于 Agent 的动态能力；现有 Workflow 不接入 Weather、Checkpoint/Saver、Retry、Streaming/Resume、并行 Graph 或 Multi-Agent 编排。完整概念见 [Workflow 学习手册](docs/workflow.md)，实测边界见 [v0.7 验证](docs/v0.7-verification.md)。
-
-## MCP：v0.6
-
-RunAgent 是 MCP Host，使用 `spring-ai-starter-mcp-client-webflux` 消费两个独立 Server：Running MCP 提供真实个人跑步数据，外部 [Open-Meteo MCP](https://github.com/cyanheads/open-meteo-mcp-server) 提供天气/空气质量。二者均使用 Streamable HTTP。
-
-```text
-                     RunAgent / MCP Host
-             ┌───────────────┼──────────────┐
-           Memory       独立 RAG API     MCP Client
-             │               │          ┌──┴─────────┐
-        Conversation       Four Books  Running MCP  Weather MCP
-                                          │            │
-                                    activities.json Weather APIs
-```
-
-Tool Calling 决定“调用什么、参数是什么”；MCP 统一能力发现与调用。ToolCallingAdvisor 和 Memory 继续使用；RAG 仍是独立 Knowledge API，没有加入 Agent Tools。
-普通启动默认 `RUNNING_TOOL_PROVIDER=local`、MCP Client 关闭，测试、build均无需MCP服务。启用 `mcp` profile 后默认切换到 `mcp` provider，Host不创建本地RunningTools/RunningDataService，不需要`RUNNING_DATA_PATH`。显式设置 `RUNNING_TOOL_PROVIDER=local` 仍可覆盖该选择。
-
-终端1，独立应用（当前为本地 standalone project）：
-
-```bash
-cd ../running-mcp-server
-export RUNNING_DATA_PATH="/absolute/path/to/generated/activities.json"
-./gradlew bootRun
-```
-
-默认 `127.0.0.1:8090/mcp`、SYNC；无认证时仅允许回环地址，不能公开发布。
-
-终端2，保留现有模型网关配置：
-
-```bash
-cd ../run-agent
-export RUNNING_MCP_URL="http://127.0.0.1:8090"
-./gradlew bootRun --args='--spring.profiles.active=local,mcp --server.address=127.0.0.1'
-```
-
-启用Weather时使用`local,mcp,weather-mcp`。Weather profile 配置了公共 Streamable HTTP 默认地址，可用`WEATHER_MCP_URL`覆盖为完整端点（包含`/mcp`）；公共地址变化时以最新上游README为准。校验使用最终生效的连接URL，地址为空或无效时明确启动失败；未启用profile不会连接公共服务。也可按上游README自托管并将同一变量指向localhost。
-
-单一`McpToolFilter`只放行3个Running Tools和3个Weather Tools（search_locations、forecast、air_quality），未知连接/Server/工具默认拒绝。发现Schema不等于全部暴露给模型。
-MCP timeout=10s，Agent=30s，调用上限仍4/8。逐连接启动发现失败互不拖累；启动时不可用的服务恢复后需重启Host重新发现。调用失败返回安全证据缺失信息；不会用模型常识编造天气或个人跑量。
-Trace只记录executionId、step、tool、source=mcp、status和latency；`ToolContextToMcpMetaConverter.noOp()`与空委托上下文阻止Trace/Memory跨MCP外发。
-天气地点来自用户明确提到的位置，不能由历史GPS推断；天气不是医疗建议或路线安全依据。公共Server为社区学习依赖，无生产SLA。完整概念、配置、过滤、错误、Transport和安全边界见 [MCP手册](docs/mcp.md)，真实验收见 [v0.6验证](docs/v0.6-verification.md)。
-
-## Conversation Memory
-
-`AgentRequest` 是 `{ "conversationId": "run-session-1", "message": "..." }`。`conversationId` 可省略或设为 `null`，服务端会生成 UUID 并在响应中返回。客户端保存它，下一轮原样传回。显式 ID 最长 100 字符，只接受英文字母、数字、`-` 和 `_`；它是 Memory 命名空间，不是认证或授权。
-
-`MessageChatMemoryAdvisor` 只在 `/api/agent` 的调用中附加，按 `ChatMemory.CONVERSATION_ID` 从 `MessageWindowChatMemory` 恢复消息并保存本轮 User / 最终 Assistant 消息。ToolCallingAdvisor 在其内层完成本次多步工具循环；历史回答可帮助理解“那段时间”，当前问题需要的个人统计仍须重新调用 Running Tools。自动 Tool Calling 的中间 Tool Call / Tool Result 不会被当作完整 Agent transcript 存入 Memory。
-
-| 概念 | 含义 |
+| 仓库 | 负责 |
 | --- | --- |
-| Context Window | 当前一次模型请求真正发送的 Token，可能包含系统提示、Memory、当前问题和本次 Tool 结果 |
-| Chat Memory | 应用在模型外维护、按 conversationId 取回并重新注入的有界上下文 |
-| Chat History | 全部对话的长期完整记录；v0.4 不保存 |
-| RAG | 按当前查询从外部知识源检索相关内容；v0.5 使用独立 Knowledge API |
+| [watson-running](https://github.com/bells/watson-running) | React / TypeScript 跑步站点、地图、统计和私有问答界面 |
+| [run-agent](https://github.com/bells/run-agent) | Java 21、Spring Boot、Spring AI、WebFlux。提供聊天 API、模型接入、MCP 客户端及分析工作流。 |
+| [running-mcp-server](https://github.com/bells/running-mcp-server) | 通过 MCP Streamable HTTP 提供只读跑步统计，独立构建，由后端同机部署。 |
 
-`conversationId` 跨多个请求；每次请求另有新的 `executionId`，只标识该次执行 trace。默认 `maxMessages=20`，通过 `AGENT_MEMORY_MAX_MESSAGES` 调整，允许 1–200。窗口超限会移除旧的完整对话回合；它并非永久归档。`InMemoryChatMemoryRepository` 在应用重启后丢失内容，多实例之间也不共享。完整机制、边界和实验见 [Conversation Memory](docs/memory.md)。
+公网代理只转发版本化聊天和私有训练统计接口。后端应用端口、管理端口和 MCP 服务绑定回环。模型密钥保存在服务端。活动快照通过单独的只读挂载提供给 MCP。
 
-## 三个 Running Tools
+## 本地运行
 
-| Tool | 模型参数 | Java 返回及计算 |
-| --- | --- | --- |
-| `getRunningSummary` | `startDate`、`endDate`，两端包含 | Run 次数、总公里、总秒数 |
-| `getRecentRuns` | 同上，及 `limit` 1–20 | 按 `start_date_local` 降序的精简活动：日期、公里、秒数、秒/公里配速 |
-| `getPersonalBest` | `distanceType`：`FIVE_K`、`TEN_K`、`HALF_MARATHON`、`MARATHON` | 标准距离附近整次活动中平均配速最快的一次 |
-
-日期使用 ISO `yyyy-MM-dd`，查询区间最多 366 个自然日。只读取 `type=Run`。Java 负责过滤、排序、米转公里、时长解析与配速计算；模型负责决定、比较和解释。距离为 0 时配速为 `null`。返回模型的类型仅包含必要字段；GPS、经纬度、起终点与 Polyline 不进入 Tool Result。
-
-`getPersonalBest` 使用目标距离 **±5%** 的集中容差，按整次活动的未舍入平均配速选最快，再返回四舍五入的秒/公里配速。它是 **recorded activity-level estimate**：`approximate=true`、`calculationBasis=WHOLE_ACTIVITY_DISTANCE_MATCH`。JSON 没有 split、lap 或 segment，无法从 10.5 km 活动中计算精确 10K split PB。没有匹配时返回 `calculationBasis=NO_MATCHING_ACTIVITY` 和空日期，模型应说明没有对应记录。
-
-## 配置与启动
-
-技术基线：Java 21、Gradle Wrapper 9.7.1、Spring Boot 4.1.1、Spring AI 2.0.1、LangGraph4j Core 1.8.27、WebFlux / Reactor、Bean Validation 和 JUnit 5。
+需要 Java 21。使用 Gradle Wrapper 构建，自动化测试使用替身模型和合成数据。
 
 ```bash
-export AI_GATEWAY_BASE_URL="https://api.deepseek.com"
-export AI_GATEWAY_API_KEY="your-api-key"
-export AI_GATEWAY_MODEL="deepseek-v4-pro"
-export RUNNING_DATA_PATH=/absolute/path/to/watson-running/src/static/activities.json
-export AGENT_MEMORY_MAX_MESSAGES=20
-./gradlew bootRun
-```
-
-服务端使用 Spring AI OpenAI Chat 客户端连接兼容的 Chat Completions 端点。切换提供方只需在启动前更改以下三项；不要将 API Key 放入前端或提交到仓库。
-
-| 提供方 | `AI_GATEWAY_BASE_URL` | `AI_GATEWAY_MODEL` | `AI_GATEWAY_API_KEY` |
-| --- | --- | --- | --- |
-| DeepSeek | `https://api.deepseek.com` | 账户可用的 DeepSeek Chat 模型，例如 `deepseek-v4-pro` | DeepSeek Key |
-| OpenRouter | `https://openrouter.ai/api/v1` | OpenRouter 模型 ID，例如 `deepseek/deepseek-chat` | OpenRouter Key |
-| 本地 Ollama | `http://localhost:11434/v1` | 已通过 `ollama pull` 下载、支持所需能力的模型名 | 非空占位值，例如 `ollama` |
-
-`AI_GATEWAY_BASE_URL` 是 API 根地址，不含 `/chat/completions`；OpenAI 客户端会添加该路径。DeepSeek 的根地址默认是 `https://api.deepseek.com`，模型默认 `deepseek-v4-pro`。若没有设置新的 `AI_GATEWAY_*` 变量，旧的 `DEEPSEEK_API_KEY`、`DEEPSEEK_BASE_URL`、`DEEPSEEK_MODEL` 以及被 Git 忽略的 `application-local.yml` 中 `spring.ai.deepseek.*` 值仍可作为回退。新配置优先；本地 profile 也可直接使用 `spring.ai.openai.api-key`、`spring.ai.openai.base-url`、`spring.ai.openai.chat.model`。可将 [application-local.yml.example](application-local.yml.example) 复制到 `src/main/resources/application-local.yml`，再选择其中一个提供方；真实密钥只放在被 Git 忽略的本地配置或环境变量中。
-
-Ollama 需要本地服务已启动且模型已下载；OpenAI 兼容端点通常忽略 API Key，但客户端仍要求非空值。三种后端的 Chat Completions 兼容程度会因模型和服务版本而异，尤其是 Tool Calling、Streaming 和 Structured Output；切换后应分别验证所需接口。数据文件只读，每次工具执行重新加载；文件不可用时不会捏造个人统计。
-
-`spring.ai.tools.limits` 在 Spring AI 2.0.1 中绑定：每个 Tool 每轮最多 **4** 次、所有 Tool 合计最多 **8** 次，超限行为 `THROW`。可通过 `AGENT_MAX_CALLS_PER_TOOL` 和 `AGENT_MAX_TOTAL_TOOL_CALLS` 覆盖。Advisor 将超限转成 `toolCallLimitExceeded` finish reason；服务将它映射成安全的 `AGENT_TOOL_LIMIT` 错误。Tool call limits are safety boundaries, not business retry policies.
-
-`/api/agent` 默认请求级超时 **30s**，可用 `AGENT_TIMEOUT` 覆盖，例如 `45s`。这是应用层 deadline 与尽力取消；阻塞的 Provider HTTP 调用不保证立即中断。超时返回 `AGENT_TIMEOUT`。每次 Agent 请求生成 UUID `executionId`，日志记录安全的 `conversationId`、消息数量、工具 step、状态和耗时；Provider 返回 Usage 时还记录 token 数。step 只是 Tool execution sequence number。Agent trace observes actions, not hidden model reasoning。日志不记录用户消息、完整 Prompt、Memory 全文、密钥或轨迹。
-
-## API 示例
-
-```bash
-curl -X POST http://localhost:8080/api/agent \
-  -H 'Content-Type: application/json' \
-  -d '{"message":"分析我最近30天的跑步情况。"}'
-```
-
-```json
-{"conversationId":"<uuid>","executionId":"<uuid>","toolCallCount":1,"content":"..."}
-```
-
-第二轮传 `{"conversationId":"<上次返回的 uuid>","message":"那跟之前30天比呢？"}`，第三轮继续传同一个 ID 问“最近几次跑步有什么变化？”。两轮的 `executionId` 各不相同。实际 Tool 顺序由模型决定，示例次数不保证。通用问题如“什么是节奏跑？”无需 Tool。`/api/chat` 继续返回 `{"content":"..."}`；`/api/intent` 继续返回 `RunningIntent`。
-
-```bash
-./gradlew test
 ./gradlew build
 ```
 
-自动测试使用本地合成数据、stub 模型和本地假网关，不调用真实提供方。真实多轮语言理解效果需要在所选模型可用且只读 Running Data 已配置时手动观察。跨仓库边界见 [Watson Running Integration Boundary](docs/watson-running-integration.md)。
-
-## RAG Running Knowledge Base
-
-v0.5 增加 Document → Chunk → Embedding → SimpleVectorStore → Retrieval → QuestionAnswerAdvisor → Answer 闭环。默认 `RAG_ENABLED=false`；测试和构建不需要 Ollama 或电子书。
-
-```text
-                           RunAgent
-             ┌────────────────┼──────────────────┐
-             ▼                ▼                  ▼
-           Memory        Running Tools           RAG
-             │                │                  │
-      Conversation      activities.json      SimpleVectorStore
-         Context          Java 精确聚合           │
-                                           四本本地跑步书籍
-```
-
-| 能力 | 数据 | 示例 | 接口 |
-| --- | --- | --- | --- |
-| Memory | 有界 conversation context | “那跟上个月比呢？” | `/api/agent` |
-| Tool | 真实结构化跑步数据 | “今年跑了多少公里？” | Chat / Agent 的 Running Tools |
-| RAG | 外部非结构化书籍 | “T 配速训练目的是什么？” | `/api/knowledge/ask` |
-
-Structured Data ≠ RAG Data。`activities.json` 的统计仍由 Java 确定性计算；Conversation Memory 不做 Embedding；RAG Advisor 不全局加入 ChatClient 或 `/api/agent`。
-
-当前四本书是《丹尼尔斯经典跑步训练法》《马拉松终极训练指南（原书第4版）》《骨骼跑步法》《跑步圣经（第2版）》。`RAG_SOURCE_PATH`可指向本机run-book集合目录；生产配置不硬编码本机绝对路径。书籍不进入Git。
-
-本地目录可指向一本书、一个文件，或包含四个书籍子目录的集合。每个目录按 **EPUB → TXT → MD** 选择一个版本，同格式按文件名排序；免责声明和隐藏文件不索引。本机四本书都使用 EPUB，因此只增加 Tika Reader，未添加 PDF / MOBI / AZW3 Reader。详见 [RAG 学习与实验](docs/rag.md)。
+如需实际问答，复制 [配置模板](application-local.yml.example) 到 `src/main/resources/application-local.yml`，按模板填写兼容 OpenAI Chat Completions 的服务地址、模型及密钥。也可通过环境变量配置 `AI_GATEWAY_BASE_URL`、`AI_GATEWAY_MODEL` 和 `AI_GATEWAY_API_KEY`。
 
 ```bash
-ollama serve  # 已启动时无需重复运行
-ollama list
-ollama pull bge-m3  # 首次准备；应用 pull-model-strategy=never
-export RAG_ENABLED=true
-export RAG_SOURCE_PATH="/absolute/path/to/run-book"
-export RAG_VECTOR_STORE_PATH=".run-agent/rag/vector-store.json"
-export RAG_OLLAMA_BASE_URL="http://localhost:11434"
-export RAG_EMBEDDING_MODEL="bge-m3"
-export RAG_REINDEX=true
-./gradlew bootRun
+./gradlew bootRun --args='--spring.profiles.active=local --server.address=127.0.0.1'
 ```
 
-Chat 仍独立使用 `AI_GATEWAY_BASE_URL`、`AI_GATEWAY_API_KEY`、`AI_GATEWAY_MODEL`。可使用 DeepSeek / OpenRouter，也可全部留在本机：
+本地问答可以调用 `POST /api/chat`，JSON 请求体为 `{"message":"跑前热身可以怎么做？"}`。需要运行 MCP 或其他分析入口时，请参照下方文档启用对应配置。
 
-```bash
-export AI_GATEWAY_BASE_URL="http://localhost:11434/v1"
-export AI_GATEWAY_API_KEY="ollama"
-export AI_GATEWAY_MODEL="qwen3:8b"
-```
+## 部署与开发文档
 
-首次观察 `EXTRACTED`、`CHUNKED`、`VALIDATED`、`INDEXED`。停止后设 `RAG_REINDEX=false` 重启，应看到 `LOADED`，不会重新 Embedding 全书。索引或模型不可用时只停用 Knowledge 模块，接口返回安全 `503 KNOWLEDGE_UNAVAILABLE`，已有能力不受影响。加载会检查模型/端点/切块参数指纹及索引 checksum。**Changing the embedding model requires rebuilding the vector index.** 修改书籍集合或正文也需主动 Reindex。
-
-```bash
-curl -X POST http://localhost:8080/api/knowledge/ask \
-  -H 'Content-Type: application/json' \
-  -d '{"question":"丹尼尔斯训练法中T配速训练的主要目的是什么？"}'
-```
-
-响应为 `{ "queryId": "<uuid>", "content": "..." }`。无召回结果时直接返回证据不足，不调用 Chat Model；召回内容不支持问题时由 Prompt 要求拒绝归因。语义分数并不能保证正确，仍须人工核对。
-
-检索 preview 只在 `--spring.profiles.active=local` 启用：
-
-```bash
-curl -X POST http://localhost:8080/api/knowledge/search \
-  -H 'Content-Type: application/json' \
-  -d '{"query":"阈值配速训练有什么作用？"}'
-```
-
-当前没有认证，本地个人实验请绑定 `--server.address=127.0.0.1`。`local` 是配置环境，不是认证。书籍、提取正文、完整 Chunk、向量 JSON 和 manifest 全部留在 `.run-agent/` 等被忽略目录；自定义索引路径也必须忽略。不要将书籍放到 Git。日志只有来源标题、数量、queryId、rank、score 和耗时，不输出问题、正文或向量。若 Chat 指向远程提供方，召回片段会作为 Prompt Context 发给该提供方；本地 Qwen 配置可让本实验的书籍内容全部留在本机。
-
-`SimpleVectorStore` 使用内存及余弦相似度、本地 JSON 持久化，**Not for production.** 默认 chunkSize=800、TopK=5、threshold=0.5 是学习起点，尚不代表最优。`RAG_TIMEOUT=180s` 是请求 deadline 和尽力取消，阻塞 Provider HTTP 不保证立即中断。当前无显式 Chunk Overlap、Hybrid Search、Reranker、RAG Tool 或 Agentic RAG。
-
-## Roadmap
-
-| 版本 | 学习阶段 |
-| --- | --- |
-| v0.1 | LLM Basics |
-| v0.2 | Tool Calling |
-| v0.3 | Agent Loop |
-| v0.4 | Memory |
-| v0.5 | RAG |
-| v0.6 | MCP |
-| v0.7 | Workflow / LangGraph4j |
-| v0.8 | Evaluation / Observability |
-| v0.9 | Supervisor / Specialist / Handoff / 有界循环 Multi-Agent |
-| v0.10 | Performance / Cost Governance |
-| v0.11 | Reliability / Failure Governance（当前） |
-
-
-## Reliability / Failure Governance v0.11
-
-可靠性默认关闭，只有 `RELIABILITY_ENABLED=true` 才启用 Multi-Agent 依赖保护。采用程序化 Resilience4j 2.4.0：Failure Classification、最多两次attempt的Backoff/Jitter、dependency-scoped CircuitBreaker、fail-fast Semaphore Bulkhead。每次真实LLM retry继续消耗同一ExecutionBudget/deadline，保留最终Synthesis额度；SDK max-retries保持0。部分证据允许明确降级，全部证据失败安全终止。
-
-```text
-RunAgent
-├── Agent / Multi-Agent
-├── Performance Governance: Budget / Routing / Usage / Cost
-├── Reliability Governance: Failure / Retry / Circuit / Bulkhead / Degradation / Recovery
-├── Evaluation
-└── Observability
-```
-
-Workflow checkpoint由独立 `RELIABILITY_CHECKPOINT_ENABLED=true` 开启。使用官方MemorySaver和真实resume，只保存安全中间结果；JVM重启后不可恢复。Java恢复服务支持失败位置继续，不新增公共HTTP入口、不改变原有成功payload。
-
-```bash
-./gradlew test
-./gradlew build
-./gradlew evaluation
-./gradlew performanceBenchmark
-./gradlew reliabilityVerification
-```
-
-| Capability | 核心问题 |
-| --- | --- |
-| Tool Calling | 模型调用什么能力？ |
-| Agent Loop | 单Agent下一步做什么？ |
-| Memory | 之前聊过什么？ |
-| RAG | 外部知识是什么？ |
-| MCP | 能力如何标准化提供？ |
-| Workflow | 应用如何确定性编排？ |
-| Evaluation | 系统做得对不对？ |
-| Observability | 执行过程中发生什么？ |
-| Multi-Agent | 多个Agent如何协作？ |
-| Performance | 怎样更快、更省？ |
-| Reliability | 依赖失败时怎样安全继续或快速失败？ |
-
-详见[可靠性学习手册](docs/reliability.md)、[v0.11验证记录](docs/v0.11-verification.md)。故障验证使用合成模型/工具、回环HTTP网关和合成RAG，完全不依赖真实模型、个人数据、书籍或公共MCP；合成通过不证明真实模型质量或生产性能。
+- [发布、回滚与同机 MCP 运维](deploy/README.md)
+- [MCP 工具发现与白名单](docs/mcp.md) · [训练分析工作流](docs/workflow.md) · [多 Agent 编排](docs/multi-agent.md)
+- [离线评估](docs/evaluation.md) · [可观测性](docs/observability.md) · [成本与预算](docs/performance.md) · [故障治理](docs/reliability.md)
+- [v0.11 README 归档](README.v0.11.md)，保留技术演进、各阶段配置和 API 示例。

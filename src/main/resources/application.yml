@@ -56,6 +56,10 @@ run-agent:
   private-chat:
     enabled: ${RUN_AGENT_PRIVATE_CHAT_ENABLED:false}
     token: ${RUN_AGENT_PRIVATE_CHAT_TOKEN:}
+  legacy-api:
+    enabled: ${RUN_AGENT_LEGACY_API_ENABLED:true}
+  private-training:
+    enabled: ${RUN_AGENT_PRIVATE_TRAINING_ENABLED:false}
   reliability:
     enabled: ${RELIABILITY_ENABLED:false}
     retry:

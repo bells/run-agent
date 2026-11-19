@@ -22,7 +22,9 @@ Java 21 / Spring Boot / Spring AI
 
 ## 当前阶段
 
-当前版本是 v0.11（0.11.0-SNAPSHOT），阶段为 Reliability / Failure Governance，已经实现：
+当前版本是 v0.12（0.12.0-SNAPSHOT），阶段为 Production Readiness，已经实现：
+
+- v0.12 提供授权后的 `POST /api/v1/chat`，经 Watson Running 同源转发。另有默认关闭的 `POST /api/v1/training/stats`，由 RunAgent 调用 Running MCP 查询统计。个人训练路径不调用模型。部署契约和回滚见 [运维文档](deploy/README.md)。
 
 - `POST /api/chat`：普通 Chat。
 - `GET /api/chat/stream`：UTF-8 SSE Streaming Chat。
@@ -227,7 +229,8 @@ v0.7 Workflow / LangGraph4j
 v0.8 Evaluation / Observability
 v0.9 Multi-Agent
 v0.10 Performance / Cost Governance
-v0.11 Reliability / Failure Governance (current)
+v0.11 Reliability / Failure Governance
+v0.12 Production Readiness (current)
 ```
 
 每一阶段都应先确认学习目标和最小可验证闭环，再增加依赖与抽象。

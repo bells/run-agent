@@ -8,6 +8,7 @@ import cn.watsonzhu.runagent.model.TrainingAnalysisResponse;
 import cn.watsonzhu.runagent.workflow.TrainingAnalysisWorkflow;
 import cn.watsonzhu.runagent.workflow.WorkflowExecutionControl;
 import jakarta.validation.Valid;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -16,6 +17,7 @@ import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
 @RestController
+@ConditionalOnProperty(name = "run-agent.legacy-api.enabled", havingValue = "true", matchIfMissing = true)
 @RequestMapping("/api/workflows/training-analysis")
 public class TrainingWorkflowController {
     private final TrainingAnalysisWorkflow workflow;

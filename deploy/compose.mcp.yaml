@@ -8,6 +8,8 @@ services:
       SERVER_ADDRESS: "127.0.0.1"
       SERVER_PORT: "18080"
       RUNNING_TOOL_PROVIDER: mcp
+      RUN_AGENT_PRIVATE_TRAINING_ENABLED: "true"
+      RUN_AGENT_LEGACY_API_ENABLED: "false"
       RUNNING_MCP_URL: http://127.0.0.1:8090
     depends_on:
       running-mcp:

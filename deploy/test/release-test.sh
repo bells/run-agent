@@ -17,7 +17,10 @@ cat > "$workspace/bin/docker" <<'DOCKER'
 #!/usr/bin/env bash
 set -eu
 case "$1" in
-  build|info|ps) exit 0 ;;
+  build)
+    printf '%s\n' "$*" >> "$RUN_AGENT_TEST_LOG.build"
+    exit 0 ;;
+  info|ps) exit 0 ;;
   compose)
     while [[ $1 != --env-file ]]; do shift; done
     source "$2"
@@ -26,6 +29,7 @@ case "$1" in
       case "$argument" in
         up|down)
           printf '%s %s\n' "$argument" "$RUN_AGENT_IMAGE" >> "$RUN_AGENT_TEST_LOG"
+          printf '%s\n' "$RUN_AGENT_DATA_DIR" >> "$RUN_AGENT_TEST_LOG.mount"
           if [[ "$argument" == up && -f "$RUN_AGENT_TEST_FAIL" ]]; then
             ! grep -Fxq "$RUN_AGENT_IMAGE" "$RUN_AGENT_TEST_FAIL"
           fi
@@ -55,8 +59,9 @@ bundle() {
   local stage="$workspace/$release"
   mkdir "$stage"
   printf '%s\n' "$release" > "$stage/release-id"
+  printf '%s%028d\n' "${release:0:12}" 0 > "$stage/run-agent-revision"
   touch "$stage/compose.yaml" "$stage/Dockerfile" "$stage/run-agent.jar"
-  tar -C "$stage" -cf "$stage/bundle.tar" release-id compose.yaml Dockerfile run-agent.jar
+  tar -C "$stage" -cf "$stage/bundle.tar" release-id run-agent-revision compose.yaml Dockerfile run-agent.jar
 }
 
 assert_state() {
@@ -83,6 +88,11 @@ fi
 printf 'run-agent:%s\n' "$release_b" > "$RUN_AGENT_TEST_FAIL"
 deploy "$release_a"
 assert_state "$release_a" ""
+revision=$(cat "$workspace/$release_a/run-agent-revision")
+[[ $(cat "$state/releases/$release_a/run-agent-revision") == "$revision" ]]
+grep -q "org.opencontainers.image.revision=$revision" "$RUN_AGENT_TEST_LOG.build"
+# Installed legacy releases have no full revision file, and may still be restored.
+rm -- "$state/releases/$release_a/run-agent-revision"
 if deploy "$release_b"; then
   printf 'Unhealthy update unexpectedly succeeded\n' >&2
   exit 1
@@ -103,11 +113,19 @@ bundle "$release_mcp"
 mcp_stage="$workspace/$release_mcp"
 touch "$mcp_stage/compose.mcp.yaml" "$mcp_stage/running-mcp.jar"
 printf '0123456789abcdef0123456789abcdef01234567\n' > "$mcp_stage/mcp-revision"
-tar -C "$mcp_stage" -cf - release-id compose.yaml Dockerfile run-agent.jar compose.mcp.yaml \
+tar -C "$mcp_stage" -cf - release-id run-agent-revision compose.yaml Dockerfile run-agent.jar compose.mcp.yaml \
   running-mcp.jar mcp-revision | bash "$deploy_dir/remote-release.sh" deploy-mcp
 assert_state "$release_mcp" "$release_a"
+[[ $(tail -n 1 "$RUN_AGENT_TEST_LOG.mount") == "$state/private-data" ]]
+printf '[{"type":"Run"}]\n' > "$state/private-data/activities.json"
 grep -Fx "RUN_AGENT_MCP_IMAGE=running-mcp-server:$release_mcp" "$state/releases/$release_mcp/release.env"
+mcp_revision=$(cat "$mcp_stage/mcp-revision")
+[[ $(cat "$state/releases/$release_mcp/mcp-revision") == "$mcp_revision" ]]
+grep -q "org.opencontainers.image.revision=$mcp_revision" "$RUN_AGENT_TEST_LOG.build"
 bash "$deploy_dir/remote-release.sh" rollback
 assert_state "$release_a" "$release_mcp"
+[[ $(tail -n 1 "$RUN_AGENT_TEST_LOG.mount") == "$state/data" ]]
+[[ ! -e "$state/data/activities.json" ]]
+[[ -f "$state/private-data/activities.json" ]]
 
 printf 'Release and rollback tests passed\n'

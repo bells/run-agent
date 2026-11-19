@@ -1,7 +1,5 @@
 package cn.watsonzhu.runagent.controller;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.UUID;
 import java.util.concurrent.TimeoutException;
@@ -22,22 +20,21 @@ import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 import tools.jackson.databind.JsonNode;
 
+import static cn.watsonzhu.runagent.controller.PrivateApiAccess.error;
+
 @RestController
 @ConditionalOnProperty(name = "run-agent.private-chat.enabled", havingValue = "true")
 public class PrivateChatController {
     private static final Duration TIMEOUT = Duration.ofSeconds(30);
     private static final long INTERVAL_NANOS = Duration.ofSeconds(4).toNanos();
     private final RunAgentService agent;
-    private final byte[] credential;
+    private final PrivateApiAccess access;
     private boolean inFlight;
     private long lastStart = System.nanoTime() - INTERVAL_NANOS;
 
     public PrivateChatController(RunAgentService agent, @Value("${run-agent.private-chat.token:}") String token) {
-        if (!token.matches("[a-f0-9]{48}")) {
-            throw new IllegalArgumentException("Private chat requires a 48-character hexadecimal access token");
-        }
         this.agent = agent;
-        credential = ("Bearer " + token).getBytes(StandardCharsets.UTF_8);
+        this.access = new PrivateApiAccess(token);
     }
 
     @PostMapping(value = "/api/v1/chat", consumes = "application/json", produces = "application/json")
@@ -45,8 +42,8 @@ public class PrivateChatController {
             @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorization,
             @RequestBody(required = false) Mono<JsonNode> body) {
         String requestId = UUID.randomUUID().toString();
-        if (authorization == null || !MessageDigest.isEqual(credential, authorization.getBytes(StandardCharsets.UTF_8))) {
-            return Mono.just(error(401, requestId, "UNAUTHORIZED", "A valid access token is required."));
+        if (!access.allows(authorization)) {
+            return Mono.just(PrivateApiAccess.unauthorized(requestId));
         }
         return body.flatMap(node -> {
                     var request = PrivateChatRequest.from(node);
@@ -97,14 +94,6 @@ public class PrivateChatController {
         return error(400, requestId, "INVALID_REQUEST", "Enter a message of at most 4000 characters.");
     }
 
-    private static ResponseEntity<?> error(int status, String requestId, String code, String message) {
-        var response = ResponseEntity.status(status).cacheControl(CacheControl.noStore());
-        if (status == 401) {
-            response.header(HttpHeaders.WWW_AUTHENTICATE, "Bearer");
-        }
-        return response.body(new PrivateChatError(requestId, code, message));
-    }
-
     private record PrivateChatRequest(String message) {
         static PrivateChatRequest from(JsonNode node) {
             if (!node.isObject() || node.size() != 1 || !node.path("message").isString()) {
@@ -119,5 +108,4 @@ public class PrivateChatController {
     }
 
     private record PrivateChatResponse(String requestId, String content) {}
-    private record PrivateChatError(String requestId, String code, String message) {}
 }

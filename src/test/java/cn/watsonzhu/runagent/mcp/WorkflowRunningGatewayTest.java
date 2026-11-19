@@ -76,13 +76,14 @@ class WorkflowRunningGatewayTest {
         when(client.callTool(any())).thenThrow(new IllegalStateException("private"));
         assertUnavailable(gateway(catalog));
         assertUnavailable(gateway(new McpCatalog(List.of(client), new McpPolicy("local").filter(), ToolContextToMcpMetaConverter.noOp())));
-        assertUnavailable(new McpRunningCapabilityGateway(new DefaultListableBeanFactory().getBeanProvider(McpCatalog.class), json));
+        assertUnavailable(new McpRunningCapabilityGateway(new McpRunningStatistics(
+                new DefaultListableBeanFactory().getBeanProvider(McpCatalog.class), json)));
     }
 
     private McpRunningCapabilityGateway gateway(McpCatalog catalog) {
         var beans = new DefaultListableBeanFactory();
         beans.registerSingleton("remoteTools", catalog);
-        return new McpRunningCapabilityGateway(beans.getBeanProvider(McpCatalog.class), json);
+        return new McpRunningCapabilityGateway(new McpRunningStatistics(beans.getBeanProvider(McpCatalog.class), json));
     }
 
     private void assertUnavailable(McpRunningCapabilityGateway gateway) {

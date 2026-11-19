@@ -8,11 +8,13 @@ import cn.watsonzhu.runagent.model.MultiAgentResponse;
 import cn.watsonzhu.runagent.multiagent.MultiAgentCoordinator;
 import cn.watsonzhu.runagent.multiagent.MultiAgentExecutionControl;
 import jakarta.validation.Valid;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
 @RestController
+@ConditionalOnProperty(name = "run-agent.legacy-api.enabled", havingValue = "true", matchIfMissing = true)
 @RequestMapping("/api/multi-agent/training-advice")
 public class MultiAgentController {
     private final MultiAgentCoordinator coordinator;

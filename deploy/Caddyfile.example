@@ -1,9 +1,9 @@
 run-api.watsonzhu.cn {
-	@privateChat {
+	@privateApi {
 		method POST
-		path /api/v1/chat
+		path /api/v1/chat /api/v1/training/stats
 	}
-	handle @privateChat {
+	handle @privateApi {
 		request_body {
 			max_size 32KB
 		}

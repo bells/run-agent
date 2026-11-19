@@ -8,6 +8,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -22,6 +23,7 @@ import reactor.core.scheduler.Schedulers;
 
 @Validated
 @RestController
+@ConditionalOnProperty(name = "run-agent.legacy-api.enabled", havingValue = "true", matchIfMissing = true)
 @RequestMapping("/api/chat")
 public class ChatController {
 

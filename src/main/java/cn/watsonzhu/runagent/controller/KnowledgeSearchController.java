@@ -6,6 +6,7 @@ import cn.watsonzhu.runagent.model.KnowledgeSearchRequest;
 import cn.watsonzhu.runagent.model.KnowledgeSearchResponse;
 import cn.watsonzhu.runagent.rag.KnowledgeSearchService;
 import jakarta.validation.Valid;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Profile;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -16,6 +17,7 @@ import reactor.core.scheduler.Schedulers;
 import java.util.concurrent.TimeoutException;
 
 @RestController
+@ConditionalOnProperty(name = "run-agent.legacy-api.enabled", havingValue = "true", matchIfMissing = true)
 @Profile("local")
 @RequestMapping("/api/knowledge")
 public class KnowledgeSearchController {

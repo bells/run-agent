@@ -50,7 +50,7 @@ class RunningProfileTest {
     private ApplicationContextRunner context(boolean mcp) {
         return new ApplicationContextRunner()
                 .withUserConfiguration(PropertiesConfig.class, RunningTools.class, RunningDataService.class,
-                        LocalRunningCapabilityGateway.class, McpRunningCapabilityGateway.class)
+                        LocalRunningCapabilityGateway.class, McpRunningCapabilityGateway.class, McpRunningStatistics.class)
                 .withBean(tools.jackson.databind.ObjectMapper.class, JsonMapper::new)
                 .withInitializer(ctx -> {
                     try {

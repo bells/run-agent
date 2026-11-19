@@ -28,6 +28,7 @@ public class PromptCatalog {
     private final String compactKnowledgeOutput;
     private final String compactFinalOutput;
     private final String boundedRunningToolPlan;
+    private final String singleRunReviewSystemPrompt;
     private final Clock clock;
 
     @Autowired
@@ -59,6 +60,7 @@ public class PromptCatalog {
         this.compactKnowledgeOutput = read(new ClassPathResource("prompts/knowledge-coach-optimized-output.txt"));
         this.compactFinalOutput = read(new ClassPathResource("prompts/multi-agent-synthesis-optimized-output.txt"));
         this.boundedRunningToolPlan = read(new ClassPathResource("prompts/running-analyst-optimized-tool-plan.txt"));
+        this.singleRunReviewSystemPrompt = read(new ClassPathResource("prompts/single-run-review-system.txt"));
         this.clock = clock;
     }
 
@@ -92,6 +94,7 @@ public class PromptCatalog {
     public String knowledgeCoachPrompt(boolean compact) {
         return knowledgeCoachPrompt() + (compact ? "\n" + compactKnowledgeOutput : "");
     }
+    public String singleRunReviewSystemPrompt() { return singleRunReviewSystemPrompt; }
     public String weatherAdvisorPrompt() { return dated(weatherAdvisorPrompt); }
 
     private String dated(String prompt) { return prompt.replace(CURRENT_DATE_TOKEN, LocalDate.now(clock).toString()); }

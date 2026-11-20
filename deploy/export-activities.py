@@ -11,6 +11,7 @@ import sys
 import tempfile
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 MAX_SOURCE_BYTES = 64 * 1024 * 1024
 MAX_SNAPSHOT_BYTES = 8 * 1024 * 1024
@@ -60,7 +61,7 @@ def duration_seconds(value: str) -> int:
     return days * 86_400 + hours * 3_600 + minutes * 60 + seconds
 
 
-def export(source: Path, key_path: Path) -> bytes:
+def export(source: Path, key_path: Optional[Path]) -> bytes:
     with source.open("rb") as file:
         data = file.read(MAX_SOURCE_BYTES + 1)
     if len(data) > MAX_SOURCE_BYTES:
@@ -102,7 +103,7 @@ def export(source: Path, key_path: Path) -> bytes:
             "start_date_local": normalize_date(row.get("start_date_local")),
         })
 
-    if activities:
+    if activities and key_path is not None:
         key = read_key(key_path)
         opaque_ids = set()
         for row in activities:
@@ -120,12 +121,15 @@ def export(source: Path, key_path: Path) -> bytes:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        sys.exit("Usage: export-activities.py <activities.json>")
+    public = len(sys.argv) == 3 and sys.argv[1] == "--public"
+    if not public and len(sys.argv) != 2:
+        sys.exit("Usage: export-activities.py [--public] <activities.json>")
     try:
-        default_key_path = Path.home() / ".local/state/run-agent/export-key"
-        key_path = Path(os.environ.get("RUN_AGENT_EXPORT_KEY_FILE") or default_key_path)
-        snapshot = export(Path(sys.argv[1]), key_path)
+        key_path = None
+        if not public:
+            default_key_path = Path.home() / ".local/state/run-agent/export-key"
+            key_path = Path(os.environ.get("RUN_AGENT_EXPORT_KEY_FILE") or default_key_path)
+        snapshot = export(Path(sys.argv[-1]), key_path)
     except (OSError, UnicodeError, ValueError, OverflowError) as error:
         sys.exit(f"Could not export activities: {error.__class__.__name__}")
     sys.stdout.buffer.write(snapshot)

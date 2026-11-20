@@ -28,6 +28,10 @@ public final class RunReviewStore {
         this.json = json;
     }
 
+    RunReviewStore publicReports() {
+        return new RunReviewStore(directory.resolve("public"), json);
+    }
+
     Optional<RunReviewReport> load(long runId) {
         try (var input = Files.newInputStream(reportPath(runId))) {
             byte[] bytes = input.readNBytes(MAX_BYTES + 1);

@@ -8,7 +8,12 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.function.Function;
 
+import cn.watsonzhu.runagent.evidence.AdviceContext;
+import cn.watsonzhu.runagent.evidence.RunningEvidenceService;
+import cn.watsonzhu.runagent.evidence.RunningEvidenceService.Bundle;
+import cn.watsonzhu.runagent.evidence.RunningEvidenceService.EvidenceStatus;
 import cn.watsonzhu.runagent.prompt.PromptCatalog;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import io.micrometer.observation.ObservationRegistry;
@@ -34,7 +39,7 @@ import tools.jackson.databind.ObjectReader;
 public class RunReviewGenerator {
     private static final int REPORT_SCHEMA_VERSION = 1;
     private static final int EVIDENCE_ALGORITHM_VERSION = 1;
-    private static final String PROMPT_VERSION = "run-review-v1";
+    private static final String PROMPT_VERSION = "run-review-v2";
     private static final int MAX_OUTPUT_CHARS = 4096;
     private static final int MAX_RECOMMENDATION_CHARS = 240;
 
@@ -45,15 +50,20 @@ public class RunReviewGenerator {
     private final SystemMessage systemMessage;
     private final String modelName;
     private final Clock clock;
+    private final Function<String, Bundle> knowledgeLookup;
 
     @Autowired
     public RunReviewGenerator(RunReviewEvidenceSource source, ChatModel model, ObservationRegistry observations,
-                              ObjectMapper json, PromptCatalog prompts, @Value("${spring.ai.openai.chat.model}") String modelName) {
-        this(source, model, observations, json, prompts.singleRunReviewSystemPrompt(), modelName, Clock.systemUTC());
+                              ObjectMapper json, PromptCatalog prompts,
+                              @Value("${spring.ai.openai.chat.model}") String modelName,
+                              RunningEvidenceService runningEvidence) {
+        this(source, model, observations, json, prompts.singleRunReviewSystemPrompt(), modelName, Clock.systemUTC(),
+                topic -> runningEvidence.collect(topic, AdviceContext.NONE));
     }
 
     RunReviewGenerator(RunReviewEvidenceSource source, ChatModel model, ObservationRegistry observations,
-                       ObjectMapper json, String systemPrompt, String modelName, Clock clock) {
+                       ObjectMapper json, String systemPrompt, String modelName, Clock clock,
+                       Function<String, Bundle> knowledgeLookup) {
         this.source = source;
         this.chatClient = ChatClient.builder(model, observations, null, null).build();
         this.json = json;
@@ -63,6 +73,7 @@ public class RunReviewGenerator {
         this.systemMessage = new SystemMessage(systemPrompt + "\n" + new BeanOutputConverter<>(Selection.class).getFormat());
         this.modelName = modelName;
         this.clock = clock;
+        this.knowledgeLookup = knowledgeLookup;
     }
 
     public RunReviewReport generate(long runId) {
@@ -71,17 +82,32 @@ public class RunReviewGenerator {
             throw new RunReviewException(RunReviewException.Code.EVIDENCE_UNAVAILABLE);
         }
         var analysis = RunReviewPaceAnalysis.calculate(evidence);
-        var selection = select(analysis);
+        var trainingEvidence = knowledgeLookup.apply(trainingTopic(analysis.trend()));
+        var knowledge = trainingEvidence.evidence().knowledge();
+        String context = knowledge.status() == EvidenceStatus.READY ? trainingEvidence.promptContext() : "";
+        var selection = select(analysis, context);
+        if (!trainingEvidence.allowsAnswer(selection.nextRun())) throw generationFailed();
         return new RunReviewReport(REPORT_SCHEMA_VERSION, runId, clock.instant(), analysis.mode(), analysis.facts(),
                 selection.observationEvidenceIds().stream().map(id -> observation(id, analysis)).toList(),
                 improvement(selection.improvementEvidenceId(), analysis.trend()), selection.nextRun().strip(),
-                EVIDENCE_ALGORITHM_VERSION, fingerprint(evidence), modelName, PROMPT_VERSION);
+                EVIDENCE_ALGORITHM_VERSION, fingerprint(evidence), modelName, PROMPT_VERSION, knowledge);
     }
 
-    private Selection select(RunReviewPaceAnalysis analysis) {
+    private static String trainingTopic(RunReviewPaceAnalysis.PaceTrend trend) {
+        return switch (trend) {
+            case CLOSE -> "耐力跑均匀配速与下次训练的节奏控制";
+            case FASTER -> "耐力跑后程加速、负分段与节奏控制";
+            case SLOWER -> "耐力跑后程配速下降、控制起跑节奏与配速分配";
+            case UNAVAILABLE -> "耐力跑的平均配速、节奏管理与下次轻松跑";
+        };
+    }
+
+    private Selection select(RunReviewPaceAnalysis analysis, String context) {
         try {
+            ModelFacts facts = ModelFacts.from(analysis.facts());
+            Object input = context.isBlank() ? facts : new TrainingContext(facts, context);
             var response = chatClient.prompt()
-                    .messages(systemMessage, new UserMessage(json.writeValueAsString(ModelFacts.from(analysis.facts()))))
+                    .messages(systemMessage, new UserMessage(json.writeValueAsString(input)))
                     .advisors(advisors -> advisors.param(ChatClientAttributes.TOOL_CALLING_ADVISOR_AUTO_REGISTER.getKey(), false))
                     .options(OpenAiChatOptions.builder().maxTokens(600))
                     .call().chatResponse();
@@ -176,6 +202,8 @@ public class RunReviewGenerator {
     }
 
     private record Selection(List<EvidenceId> observationEvidenceIds, EvidenceId improvementEvidenceId, String nextRun) {}
+
+    private record TrainingContext(ModelFacts facts, String retrievedTrainingSources) {}
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private record ModelFacts(double distanceMeters, long movingSeconds, long averagePaceSecondsPerKm,

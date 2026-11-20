@@ -32,6 +32,21 @@ export_snapshot() {
 export_snapshot "$workspace/source.json" > "$workspace/first.json"
 export_snapshot "$workspace/source.json" > "$workspace/repeat.json"
 cmp "$workspace/first.json" "$workspace/repeat.json"
+RUN_AGENT_EXPORT_KEY_FILE="$workspace/public-must-not-create-key" \
+  python3 "$deploy_dir/export-activities.py" --public "$workspace/source.json" > "$workspace/public.json"
+[[ ! -e "$workspace/public-must-not-create-key" ]]
+python3 - "$workspace/public.json" <<'PY'
+import json
+import pathlib
+import sys
+
+activities = json.loads(pathlib.Path(sys.argv[1]).read_text())
+assert [row["run_id"] for row in activities] == [54321, 123456]
+assert all(set(row) == {"run_id", "type", "distance", "moving_time", "start_date_local"} for row in activities)
+assert [row["start_date_local"] for row in activities] == ["2025-01-02 00:00:00", "2025-02-07 00:00:00"]
+assert [row["distance"] for row in activities] == [5000.5, 100]
+assert [row["moving_time"] for row in activities] == ["0:29:00", "24:00:04"]
+PY
 python3 - "$workspace/first.json" "$RUN_AGENT_EXPORT_KEY_FILE" <<'PY'
 import json
 import pathlib
@@ -81,9 +96,9 @@ PY
 done
 
 sync_snapshot() {
-  local path=$1 checksum
+  local path=$1 action=${2:-sync-data} checksum
   checksum=$(shasum -a 256 < "$path")
-  { printf '%s\n' "${checksum%% *}"; cat "$path"; } | bash "$deploy_dir/remote-release.sh" sync-data
+  { printf '%s\n' "${checksum%% *}"; cat "$path"; } | bash "$deploy_dir/remote-release.sh" "$action"
 }
 
 # GNU sha256sum is available on the server. Use shasum for the same check
@@ -102,6 +117,12 @@ legacy="$RUN_AGENT_DEPLOY_DIR/data/activities.json"
 mkdir -p "$(dirname "$legacy")"
 cp "$workspace/first.json" "$legacy"
 sync_snapshot "$workspace/first.json"
+cmp "$active" "$workspace/first.json"
+public_active="$RUN_AGENT_DEPLOY_DIR/public-data/activities.json"
+sync_snapshot "$workspace/public.json" sync-public-data
+cmp "$public_active" "$workspace/public.json"
+bash "$deploy_dir/remote-release.sh" rollback-public-data
+[[ ! -e "$public_active" ]]
 cmp "$active" "$workspace/first.json"
 rollback
 [[ ! -e "$active" ]]

@@ -6,6 +6,7 @@ release_root=${RUN_AGENT_DEPLOY_DIR:-$HOME/.local/share/run-agent}
 releases="$release_root/releases"
 legacy_data_dir="$release_root/data"
 private_data_dir="$release_root/private-data"
+public_data_dir="$release_root/public-data"
 project=run-agent-private
 stage=
 docker_sudo=false
@@ -21,7 +22,7 @@ fail() {
 
 docker() {
   if [[ $docker_sudo == true ]]; then
-    command sudo -n --preserve-env=RUN_AGENT_PROVIDER_FILE,RUN_AGENT_PRIVATE_FILE,RUN_AGENT_DATA_DIR docker "$@"
+    command sudo -n --preserve-env=RUN_AGENT_PROVIDER_FILE,RUN_AGENT_PRIVATE_FILE,RUN_AGENT_DATA_DIR,RUN_AGENT_PUBLIC_DATA_DIR,RUN_AGENT_KNOWLEDGE_DIR docker "$@"
   else
     command docker "$@"
   fi
@@ -47,15 +48,20 @@ compose() {
   valid_release "$release" || fail "Invalid release ID."
   local directory="$releases/$release"
   local -x RUN_AGENT_DATA_DIR="$legacy_data_dir"
-  local files=(-f "$directory/compose.yaml")
+  local options=(--project-name "$project")
+  if [[ -f $release_root/runtime.env ]]; then
+    options+=(--env-file "$release_root/runtime.env")
+  fi
+  options+=(--env-file "$directory/release.env" -f "$directory/compose.yaml")
   if [[ -f $directory/compose.mcp.yaml ]]; then
-    files+=(-f "$directory/compose.mcp.yaml")
+    options+=(-f "$directory/compose.mcp.yaml")
+    mkdir -p -m 755 -- "$RUN_AGENT_PUBLIC_DATA_DIR" "$RUN_AGENT_KNOWLEDGE_DIR"
     if [[ -f $directory/private-data-compatible ]]; then
       RUN_AGENT_DATA_DIR="$private_data_dir"
     fi
   fi
   prepare_data_directory || return
-  docker compose --project-name "$project" --env-file "$directory/release.env" "${files[@]}" "$@"
+  docker compose "${options[@]}" "$@"
 }
 
 activate() {
@@ -104,6 +110,8 @@ prepare_data_directory() {
 export RUN_AGENT_PROVIDER_FILE="$release_root/provider.env"
 export RUN_AGENT_PRIVATE_FILE="$release_root/private-chat.env"
 export RUN_AGENT_DATA_DIR="$legacy_data_dir"
+export RUN_AGENT_PUBLIC_DATA_DIR="$public_data_dir"
+export RUN_AGENT_KNOWLEDGE_DIR="$release_root/knowledge"
 
 finish_snapshot_update() {
   if [[ -f $pending_snapshot/activities.json ]]; then
@@ -115,21 +123,25 @@ finish_snapshot_update() {
   rmdir -- "$pending_snapshot"
 }
 
-if [[ ${1:-} == sync-data || ${1:-} == rollback-data ]]; then
-  RUN_AGENT_DATA_DIR="$private_data_dir"
+if [[ ${1:-} =~ ^(sync|rollback)-(public-)?data$ ]]; then
+  data_scope=private
+  if [[ $1 == *-public-data ]]; then data_scope=public; fi
+  RUN_AGENT_DATA_DIR="$release_root/$data_scope-data"
   prepare_data_directory
-  exec 8>"$release_root/data.lock"
+  lockfile="$release_root/data.lock"
+  if [[ $data_scope == public ]]; then lockfile="$release_root/public-data.lock"; fi
+  exec 8>"$lockfile"
   flock -n 8 || fail "Another data snapshot operation is running."
 
   active_snapshot="$RUN_AGENT_DATA_DIR/activities.json"
-  previous_snapshot="$release_root/private-activities.previous.json"
+  previous_snapshot="$release_root/$data_scope-activities.previous.json"
   pending_snapshot="$RUN_AGENT_DATA_DIR/.pending-snapshot"
   if [[ -d $pending_snapshot ]]; then
     printf 'Recovering an interrupted activity update.\n' >&2
     finish_snapshot_update
   fi
   stage=$(mktemp -d "$RUN_AGENT_DATA_DIR/.import.XXXXXXXX")
-  if [[ $1 == rollback-data ]]; then
+  if [[ $1 == rollback-* ]]; then
     [[ -f $previous_snapshot ]] || fail "No previous activity snapshot is available."
     if [[ -s $previous_snapshot ]]; then
       cp -- "$previous_snapshot" "$stage/activities.json"

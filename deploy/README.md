@@ -72,3 +72,21 @@ ssh -N -L 127.0.0.1:18081:127.0.0.1:18080 run-agent-hk
 | `VITE_RUN_AGENT_RUN_REVIEW` | 前端构建开关，默认关闭。 |
 
 代理按 [Caddyfile 示例](Caddyfile.example) 转发数字活动 ID 的 GET 和 POST。验证浏览器同源请求、匿名 401、跨重启回看与停用生成时仍可读已有报告。[复盘规格](../docs/superpowers/specs/2026-11-19-single-run-review-design.md)
+
+## 公开体验、天气与在线书库
+
+使用现有同机 MCP 发布。准备与当前 Watson Running 发布版本一致的公开活动 JSON，用 `deploy/deploy.sh sync-public-data <ssh-target> <published-activities.json>` 导出并同步。脚本只保留公开 ID、运动类型、日期、距离和移动时长，并把快照写到独立的 `public-data` 目录。使用 `rollback-public-data` 独立回退公开快照。
+
+在服务器发布根目录配置以下项目。发布根目录默认为 `~/.local/share/run-agent`。
+
+| 位置 | 设置 |
+| --- | --- |
+| `runtime.env` | `RUN_AGENT_MCP_PROFILES=mcp,weather-mcp` |
+| `provider.env` | `RAG_ENABLED=true`，配置 `RAG_OLLAMA_BASE_URL` 与 `RAG_EMBEDDING_MODEL`。生成继续使用现有 DeepSeek 配置。 |
+| `knowledge/` | `vector-store.json` 和 `vector-store.json.manifest`。文件包含书籍片段，限制为部署账号和容器 UID 10001 可读。生产 Compose 只读加载并校验一致性。 |
+| `private-chat.env` | `RUN_AGENT_PUBLIC_API_ENABLED=true`、`RUN_AGENT_PUBLIC_REVIEW_IDS`。复盘 ID 来自当前网站发布的真实活动，和前端公开 ID 一致。可覆盖 `RUN_AGENT_PUBLIC_CHAT_DAILY_LIMIT`、`RUN_AGENT_PUBLIC_TRAINING_ADVICE_DAILY_LIMIT` 和 `RUN_AGENT_PUBLIC_REVIEW_DAILY_LIMIT`。 |
+| 前端生产构建 | `VITE_RUN_AGENT_PUBLIC_API=true`、`VITE_RUN_AGENT_RUN_REVIEW=true` 和 `VITE_RUN_AGENT_PUBLIC_REVIEW_IDS`。 |
+
+预先用与服务器相同的 Embedding 模型、端点身份和分块配置构建索引。启动前确认 Embedding 服务已加载模型，核查主机内存。应用启动后确认 RAG 输出 `LOADED`，MCP 发现日志包含 `running` 与 `weather`，再配合同源前端检查公开入口。用一条包含城市与时段的问答确认预报时段和书籍来源，随后核对公开统计和指定活动的生成及回看。个人令牌继续访问原数据范围。模型额度与报告存储按访问权限独立处理。
+
+在 GitHub 仓库将 `RUN_AGENT_PUBLIC_API_ENABLED` Actions 变量设为 `true` 后，定时 smoke 检查匿名统计和匿名聊天参数校验。探针发送无效的聊天请求来验证路由，避免触发模型调用。

@@ -116,6 +116,21 @@ class PrivateTrainingRouteTest {
                     "getRunningSummary", "getRecentRuns", "getPersonalBest");
             when(client.callTool(any())).thenAnswer(call -> {
                 McpSchema.CallToolRequest request = call.getArgument(0);
+                if ("PUBLIC".equals(request.arguments().get("scope"))
+                        && "2026-11-01".equals(request.arguments().get("startDate"))) {
+                    return McpSchema.CallToolResult.builder().addTextContent("""
+                            {"scope":"PUBLIC","startDate":"2026-11-01","endDate":"2026-11-07","runCount":1,
+                             "totalDistanceKm":5.0,"totalDurationSeconds":1800,"dataThrough":"2026-11-03"}
+                            """).build();
+                }
+                if ("PUBLIC".equals(request.arguments().get("scope"))
+                        && "FIVE_K".equals(request.arguments().get("distanceType"))) {
+                    return McpSchema.CallToolResult.builder().addTextContent("""
+                            {"scope":"PUBLIC","distanceType":"FIVE_K","date":"2026-11-03","activityDistanceKm":5.0,
+                             "durationSeconds":1800,"averagePaceSecondsPerKm":360,"approximate":true,
+                             "calculationBasis":"WHOLE_ACTIVITY_DISTANCE_MATCH","dataThrough":"2026-11-03"}
+                            """).build();
+                }
                 String content = switch (request.name()) {
                     case "getRunningSummary" -> switch (String.valueOf(request.arguments().get("startDate"))) {
                         case "2026-11-01" -> """

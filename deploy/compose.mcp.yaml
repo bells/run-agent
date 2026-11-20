@@ -4,8 +4,14 @@ services:
     ports: !reset []
     volumes: !override
       - run-reviews:/var/lib/run-agent/reviews
+      - type: bind
+        source: ${RUN_AGENT_KNOWLEDGE_DIR:-./knowledge}
+        target: /knowledge
+        read_only: true
+        bind:
+          create_host_path: false
     environment:
-      SPRING_PROFILES_ACTIVE: mcp
+      SPRING_PROFILES_ACTIVE: ${RUN_AGENT_MCP_PROFILES:-mcp}
       SERVER_ADDRESS: "127.0.0.1"
       SERVER_PORT: "18080"
       RUNNING_TOOL_PROVIDER: mcp
@@ -13,6 +19,8 @@ services:
       RUN_AGENT_LEGACY_API_ENABLED: "false"
       RUN_AGENT_RUN_REVIEW_DIR: /var/lib/run-agent/reviews
       RUNNING_MCP_URL: http://127.0.0.1:8090
+      RAG_VECTOR_STORE_PATH: /knowledge/vector-store.json
+      RAG_REINDEX: "false"
     depends_on:
       running-mcp:
         condition: service_healthy
@@ -33,10 +41,17 @@ services:
       RUNNING_MCP_BIND_ADDRESS: "127.0.0.1"
       RUNNING_MCP_PORT: "8090"
       RUNNING_DATA_PATH: /data/activities.json
+      RUNNING_PUBLIC_DATA_PATH: /public-data/activities.json
     volumes:
       - type: bind
         source: ${RUN_AGENT_DATA_DIR:?Set the activity export directory}
         target: /data
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${RUN_AGENT_PUBLIC_DATA_DIR:-./public-data}
+        target: /public-data
         read_only: true
         bind:
           create_host_path: false

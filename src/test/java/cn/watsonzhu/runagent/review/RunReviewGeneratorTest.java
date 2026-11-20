@@ -5,7 +5,9 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 
+import cn.watsonzhu.runagent.evidence.RunningEvidenceService;
 import cn.watsonzhu.runagent.prompt.PromptCatalog;
 import io.micrometer.observation.ObservationRegistry;
 import org.junit.jupiter.api.Test;
@@ -117,13 +119,43 @@ class RunReviewGeneratorTest {
         assertThat(sent.get()).isNull();
     }
 
+    @Test
+    void reviewUsesRetrievedTrainingContextAndPersistsOnlySourceMetadata() {
+        var knowledge = new RunningEvidenceService.Knowledge(RunningEvidenceService.EvidenceStatus.READY,
+                List.of(new RunningEvidenceService.Source("合成跑步教材", "节奏控制")));
+        var example = evidence(4000, 1260, List.of(split(1000, 300, false), split(1000, 300, false),
+                split(1000, 330, false), split(1000, 330, false)));
+        String excerpt = "这是供模型参考的合成节奏段落";
+        var report = generator(example, comparison(), topic -> {
+            assertThat(topic).contains("后程配速下降").doesNotContain(Long.toString(RUN_ID));
+            return new RunningEvidenceService.Bundle(new RunningEvidenceService.Evidence(knowledge, null), excerpt);
+        }).generate(RUN_ID);
+
+        assertThat(report.knowledge()).isEqualTo(knowledge);
+        assertThat(json.writeValueAsString(report)).doesNotContain(excerpt);
+        var userMessages = sent.get().getInstructions().stream()
+                .filter(message -> message.getMessageType() == MessageType.USER).map(message -> message.getText()).toList();
+        assertThat(userMessages).hasSize(1);
+        var modelInput = json.readTree(userMessages.getFirst());
+        assertThat(modelInput.path("facts").propertyNames()).containsExactlyInAnyOrder(
+                "distanceMeters", "movingSeconds", "averagePaceSecondsPerKm", "firstHalfPaceSecondsPerKm",
+                "secondHalfPaceSecondsPerKm", "paceDeltaSecondsPerKm");
+        assertThat(modelInput.path("retrievedTrainingSources").asString()).isEqualTo(excerpt);
+        assertThat(userMessages.getFirst()).doesNotContain(Long.toString(RUN_ID));
+    }
+
     private RunReviewGenerator generator(RunReviewEvidence evidence, String modelOutput) {
+        return generator(evidence, modelOutput, topic -> RunningEvidenceService.Bundle.empty());
+    }
+
+    private RunReviewGenerator generator(RunReviewEvidence evidence, String modelOutput,
+            Function<String, RunningEvidenceService.Bundle> knowledgeLookup) {
         ChatModel model = prompt -> {
             sent.set(prompt);
             return new ChatResponse(List.of(new Generation(new AssistantMessage(modelOutput))));
         };
         return new RunReviewGenerator(id -> evidence, model, ObservationRegistry.NOOP, json,
-                prompts.singleRunReviewSystemPrompt(), "test-model", CLOCK);
+                prompts.singleRunReviewSystemPrompt(), "test-model", CLOCK, knowledgeLookup);
     }
 
     private static String comparison() {

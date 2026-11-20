@@ -22,7 +22,6 @@ services:
       MANAGEMENT_PORT: "9091"
       RUNNING_TOOL_PROVIDER: local
       RUNNING_DATA_PATH: /data/activities.json
-      RAG_ENABLED: "false"
     ports:
       - "127.0.0.1:18080:8080"
     volumes:

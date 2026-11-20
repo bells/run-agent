@@ -1,10 +1,17 @@
 package cn.watsonzhu.runagent.controller;
 
 import java.time.Duration;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.UUID;
 import java.util.concurrent.TimeoutException;
 
 import cn.watsonzhu.runagent.agent.RunAgentService;
+import cn.watsonzhu.runagent.evidence.AdviceContext;
+import cn.watsonzhu.runagent.evidence.RunningEvidenceService;
+import cn.watsonzhu.runagent.evidence.RunningEvidenceService.Evidence;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import org.springframework.beans.factory.annotation.Autowired;
 import cn.watsonzhu.runagent.exception.AiRequestException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -29,12 +36,24 @@ public class PrivateChatController {
     private static final long INTERVAL_NANOS = Duration.ofSeconds(4).toNanos();
     private final RunAgentService agent;
     private final PrivateApiAccess access;
-    private boolean inFlight;
-    private long lastStart = System.nanoTime() - INTERVAL_NANOS;
+    private final RunningEvidenceService evidence;
+    private final boolean publicEnabled;
+    private final Admission owner = new Admission(Integer.MAX_VALUE);
+    private final Admission visitor;
 
-    public PrivateChatController(RunAgentService agent, @Value("${run-agent.private-chat.token:}") String token) {
+    @Autowired
+    public PrivateChatController(RunAgentService agent, @Value("${run-agent.private-chat.token:}") String token,
+            RunningEvidenceService evidence, @Value("${run-agent.public-api.enabled:false}") boolean publicEnabled,
+            @Value("${run-agent.public-api.chat-daily-limit:40}") int publicDailyLimit) {
         this.agent = agent;
         this.access = new PrivateApiAccess(token);
+        this.evidence = evidence;
+        this.publicEnabled = publicEnabled;
+        this.visitor = new Admission(publicDailyLimit);
+    }
+
+    PrivateChatController(RunAgentService agent, String token) {
+        this(agent, token, null, false, 40);
     }
 
     @PostMapping(value = "/api/v1/chat", consumes = "application/json", produces = "application/json")
@@ -42,30 +61,40 @@ public class PrivateChatController {
             @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorization,
             @RequestBody(required = false) Mono<JsonNode> body) {
         String requestId = UUID.randomUUID().toString();
-        if (!access.allows(authorization)) {
+        boolean anonymous = publicEnabled && authorization == null;
+        if (!anonymous && !access.allows(authorization)) {
             return Mono.just(PrivateApiAccess.unauthorized(requestId));
         }
         return body.flatMap(node -> {
                     var request = PrivateChatRequest.from(node);
-                    return request == null ? Mono.just(invalid(requestId)) : answer(requestId, request);
+                    return request == null ? Mono.just(invalid(requestId))
+                            : answer(requestId, request, anonymous ? visitor : owner);
                 })
                 .switchIfEmpty(Mono.fromSupplier(() -> invalid(requestId)))
                 .onErrorResume(ServerWebInputException.class, exception -> Mono.just(invalid(requestId)));
     }
 
-    private Mono<ResponseEntity<?>> answer(String requestId, PrivateChatRequest request) {
+    private Mono<ResponseEntity<?>> answer(String requestId, PrivateChatRequest request, Admission admission) {
         return Mono.<ResponseEntity<?>>fromCallable(() -> {
-                    if (!tryStart()) {
-                        return error(429, requestId, "RATE_LIMITED", "Try again in a few seconds.");
+                    if (!admission.tryStart()) {
+                        return error(429, requestId, "RATE_LIMITED", "The request limit has been reached. Try again later.");
                     }
                     try {
-                        String content = agent.privateChat(request.message());
+                        var bundle = evidence != null && (publicEnabled || !request.context().equals(AdviceContext.NONE))
+                                ? evidence.collect(request.message(), request.context().withChatHints(request.message()))
+                                : null;
+                        String content = bundle == null ? agent.privateChat(request.message())
+                                : agent.privateChat(request.message(), bundle.promptContext());
+                        if (bundle != null && content != null && !bundle.allowsAnswer(content)) {
+                            content = "这次回答包含过长的原文。可以换个问法，我可以概括相关训练原则。";
+                        }
                         return content == null || content.isBlank()
                                 ? error(502, requestId, "AI_SERVICE_ERROR", "The AI service returned no answer.")
                                 : ResponseEntity.ok().cacheControl(CacheControl.noStore())
-                                        .body(new PrivateChatResponse(requestId, content));
+                                        .body(new PrivateChatResponse(requestId, content,
+                                                bundle == null ? null : bundle.evidence()));
                     } finally {
-                        finish();
+                        admission.finish();
                     }
                 })
                 .subscribeOn(Schedulers.boundedElastic())
@@ -76,36 +105,58 @@ public class PrivateChatController {
                         Mono.just(error(504, requestId, "AI_SERVICE_ERROR", "The AI request timed out.")));
     }
 
-    private synchronized boolean tryStart() {
-        long now = System.nanoTime();
-        if (inFlight || now - lastStart < INTERVAL_NANOS) {
-            return false;
-        }
-        inFlight = true;
-        lastStart = now;
-        return true;
-    }
+    private static final class Admission {
+        private final int dailyLimit;
+        private LocalDate day = LocalDate.now(ZoneOffset.UTC);
+        private int requests;
+        private boolean inFlight;
+        private long lastStart = System.nanoTime() - INTERVAL_NANOS;
 
-    private synchronized void finish() {
-        inFlight = false;
+        private Admission(int dailyLimit) {
+            if (dailyLimit < 1) throw new IllegalArgumentException("Chat limit must be positive");
+            this.dailyLimit = dailyLimit;
+        }
+
+        synchronized boolean tryStart() {
+            var today = LocalDate.now(ZoneOffset.UTC);
+            if (!day.equals(today)) {
+                day = today;
+                requests = 0;
+            }
+            long now = System.nanoTime();
+            if (inFlight || now - lastStart < INTERVAL_NANOS || requests >= dailyLimit) return false;
+            inFlight = true;
+            lastStart = now;
+            requests++;
+            return true;
+        }
+
+        synchronized void finish() {
+            inFlight = false;
+        }
     }
 
     private static ResponseEntity<?> invalid(String requestId) {
-        return error(400, requestId, "INVALID_REQUEST", "Enter a message of at most 4000 characters.");
+        return error(400, requestId, "INVALID_REQUEST", "Enter a message of at most 4000 characters and valid optional city and time.");
     }
 
-    private record PrivateChatRequest(String message) {
+    private record PrivateChatRequest(String message, AdviceContext context) {
         static PrivateChatRequest from(JsonNode node) {
-            if (!node.isObject() || node.size() != 1 || !node.path("message").isString()) {
+            if (!node.isObject() || node.size() != (node.has("context") ? 2 : 1) || !node.path("message").isString()) {
                 return null;
             }
             String message = node.path("message").asString();
             if (message.isBlank() || message.codePointCount(0, message.length()) > 4000) {
                 return null;
             }
-            return new PrivateChatRequest(message);
+            try {
+                return new PrivateChatRequest(message, AdviceContext.parse(node.path("context")));
+            } catch (IllegalArgumentException exception) {
+                return null;
+            }
         }
     }
 
-    private record PrivateChatResponse(String requestId, String content) {}
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private record PrivateChatResponse(String requestId, String content, Evidence evidence) {}
 }

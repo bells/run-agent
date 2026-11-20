@@ -10,6 +10,8 @@ Usage:
   deploy/deploy.sh rollback <ssh-target>
   deploy/deploy.sh sync-data <ssh-target> <activities.json>
   deploy/deploy.sh rollback-data <ssh-target>
+  deploy/deploy.sh sync-public-data <ssh-target> <published-activities.json>
+  deploy/deploy.sh rollback-public-data <ssh-target>
 
 Use an SSH alias or a user@host. Set RUN_AGENT_SSH_KNOWN_HOSTS to use a
 separately verified known_hosts file.
@@ -40,7 +42,7 @@ remote() {
 }
 
 case "$mode" in
-  check|rollback|rollback-data)
+  check|rollback|rollback-data|rollback-public-data)
     [[ $# == 2 ]] || usage
     encoded_script=$(encode < "$deploy_dir/remote-release.sh")
     remote "$mode"
@@ -55,14 +57,16 @@ case "$mode" in
     mcp_revision=$(git -C "$mcp_repo" rev-parse --verify --end-of-options "${5:-HEAD}^{commit}")
     ref=${4:-HEAD}
     ;;
-  sync-data)
+  sync-data|sync-public-data)
     [[ $# == 3 ]] || usage
     snapshot=$(mktemp)
     trap 'rm -f -- "$snapshot"' EXIT
-    python3 "$deploy_dir/export-activities.py" "$3" > "$snapshot"
+    export_options=()
+    if [[ $mode == sync-public-data ]]; then export_options+=(--public); fi
+    python3 "$deploy_dir/export-activities.py" "${export_options[@]}" "$3" > "$snapshot"
     encoded_script=$(encode < "$deploy_dir/remote-release.sh")
     checksum=$(shasum -a 256 < "$snapshot")
-    { printf '%s\n' "${checksum%% *}"; cat "$snapshot"; } | remote sync-data
+    { printf '%s\n' "${checksum%% *}"; cat "$snapshot"; } | remote "$mode"
     exit ;;
   *) usage ;;
 esac

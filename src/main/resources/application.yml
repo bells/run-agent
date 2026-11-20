@@ -56,6 +56,12 @@ run-agent:
   private-chat:
     enabled: ${RUN_AGENT_PRIVATE_CHAT_ENABLED:false}
     token: ${RUN_AGENT_PRIVATE_CHAT_TOKEN:}
+  public-api:
+    enabled: ${RUN_AGENT_PUBLIC_API_ENABLED:false}
+    chat-daily-limit: ${RUN_AGENT_PUBLIC_CHAT_DAILY_LIMIT:40}
+    training-advice-daily-limit: ${RUN_AGENT_PUBLIC_TRAINING_ADVICE_DAILY_LIMIT:12}
+    review-ids: ${RUN_AGENT_PUBLIC_REVIEW_IDS:}
+    review-daily-limit: ${RUN_AGENT_PUBLIC_REVIEW_DAILY_LIMIT:8}
   legacy-api:
     enabled: ${RUN_AGENT_LEGACY_API_ENABLED:true}
   run-review:

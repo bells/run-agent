@@ -7,10 +7,12 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
 
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import jakarta.annotation.PreDestroy;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -29,6 +31,7 @@ public final class RunReviewCoordinator {
     private final MeterRegistry metrics;
     private final boolean generationEnabled;
     private final Duration timeout;
+    private final BooleanSupplier admitGeneration;
     private final ExecutorService worker =
             Executors.newSingleThreadExecutor(Thread.ofPlatform().daemon().name("run-review-worker").factory());
     private final ScheduledThreadPoolExecutor deadlines =
@@ -36,15 +39,22 @@ public final class RunReviewCoordinator {
     private final LinkedHashMap<Long, Failure> failures = new LinkedHashMap<>();
     private Job active;
 
+    @Autowired
     public RunReviewCoordinator(RunReviewStore store, ObjectProvider<RunReviewGenerator> generator,
             MeterRegistry metrics, @Value("${run-agent.run-review.generation-enabled:false}") boolean generationEnabled,
             @Value("${run-agent.run-review.timeout:25s}") Duration timeout) {
+        this(store, generator, metrics, generationEnabled, timeout, () -> true);
+    }
+
+    RunReviewCoordinator(RunReviewStore store, ObjectProvider<RunReviewGenerator> generator, MeterRegistry metrics,
+            boolean generationEnabled, Duration timeout, BooleanSupplier admitGeneration) {
         if (timeout.isNegative() || timeout.isZero()) throw new IllegalArgumentException("Review timeout must be positive");
         this.store = store;
         this.generator = generator;
         this.metrics = metrics;
         this.generationEnabled = generationEnabled;
         this.timeout = timeout;
+        this.admitGeneration = admitGeneration;
         deadlines.setRemoveOnCancelPolicy(true);
     }
 
@@ -81,6 +91,9 @@ public final class RunReviewCoordinator {
                     ? reply(202, "GENERATING")
                     : reply(429, "REVIEW_BUSY");
             return CompletableFuture.completedFuture(response);
+        }
+        if (!admitGeneration.getAsBoolean()) {
+            return CompletableFuture.completedFuture(reply(429, "REVIEW_RATE_LIMITED"));
         }
 
         failures.remove(runId);

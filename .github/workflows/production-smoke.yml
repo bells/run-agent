@@ -14,5 +14,7 @@ jobs:
     timeout-minutes: 3
     steps:
       - uses: actions/checkout@v4
-      - name: Frontend and anonymous authorization
+      - name: Frontend and API access
+        env:
+          RUN_AGENT_PUBLIC_API_ENABLED: ${{ vars.RUN_AGENT_PUBLIC_API_ENABLED || 'false' }}
         run: bash deploy/smoke-public.sh

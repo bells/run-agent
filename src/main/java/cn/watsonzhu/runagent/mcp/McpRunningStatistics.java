@@ -1,6 +1,7 @@
 package cn.watsonzhu.runagent.mcp;
 
 import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.Map;
 
 import cn.watsonzhu.runagent.exception.RunningDataUnavailableException;
@@ -15,6 +16,7 @@ import tools.jackson.databind.ObjectMapper;
 
 @Component
 public class McpRunningStatistics {
+    private static final String PUBLIC_SCOPE = "PUBLIC";
     private final ObjectProvider<McpCatalog> catalog;
     private final ObjectMapper json;
 
@@ -24,8 +26,17 @@ public class McpRunningStatistics {
     }
 
     public Snapshot<RunningSummary> summary(LocalDate start, LocalDate end) {
+        return summary(start, end, false);
+    }
+
+    public Snapshot<RunningSummary> publicSummary(LocalDate start, LocalDate end) {
+        return summary(start, end, true);
+    }
+
+    private Snapshot<RunningSummary> summary(LocalDate start, LocalDate end, boolean publicScope) {
         try {
-            JsonNode result = call("getRunningSummary", Map.of("startDate", start.toString(), "endDate", end.toString()));
+            JsonNode result = call("getRunningSummary",
+                    Map.of("startDate", start.toString(), "endDate", end.toString()), publicScope);
             if (!start.toString().equals(result.path("startDate").asString())
                     || !end.toString().equals(result.path("endDate").asString())
                     || !result.path("runCount").isIntegralNumber()
@@ -43,8 +54,16 @@ public class McpRunningStatistics {
     }
 
     public Snapshot<PersonalBest> personalBest(DistanceType type) {
+        return personalBest(type, false);
+    }
+
+    public Snapshot<PersonalBest> publicPersonalBest(DistanceType type) {
+        return personalBest(type, true);
+    }
+
+    private Snapshot<PersonalBest> personalBest(DistanceType type, boolean publicScope) {
         try {
-            JsonNode result = call("getPersonalBest", Map.of("distanceType", type.name()));
+            JsonNode result = call("getPersonalBest", Map.of("distanceType", type.name()), publicScope);
             if (!type.name().equals(result.path("distanceType").asString())
                     || !result.path("approximate").isBoolean() || !result.path("approximate").booleanValue()) {
                 throw unavailable();
@@ -74,10 +93,12 @@ public class McpRunningStatistics {
                 .allMatch(tool -> available.findTool("running", tool).isPresent());
     }
 
-    private JsonNode call(String tool, Map<String, String> arguments) {
+    private JsonNode call(String tool, Map<String, String> businessArguments, boolean publicScope) {
         var available = catalog.getIfAvailable();
         if (available == null) throw unavailable();
         var callback = available.findTool("running", tool).orElseThrow(McpRunningStatistics::unavailable);
+        Map<String, String> arguments = new HashMap<>(businessArguments);
+        if (publicScope) arguments.put("scope", PUBLIC_SCOPE);
         var blocks = json.readTree(callback.call(json.writeValueAsString(arguments), new ToolContext(Map.of())));
         // Spring AI 2.0.1 exposes a JSON array of MCP content blocks, with or without the text discriminator.
         if (!blocks.isArray() || blocks.size() != 1) throw unavailable();
@@ -88,6 +109,8 @@ public class McpRunningStatistics {
         }
         JsonNode result = json.readTree(block.path("text").asString());
         if (!result.isObject() || result.has("error")) throw unavailable();
+        // Older MCP releases may silently ignore unknown arguments and return private aggregates.
+        if (publicScope && !PUBLIC_SCOPE.equals(result.path("scope").asString())) throw unavailable();
         return result;
     }
 

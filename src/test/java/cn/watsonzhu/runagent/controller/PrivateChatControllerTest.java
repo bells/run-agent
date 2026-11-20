@@ -41,6 +41,24 @@ class PrivateChatControllerTest {
         verify(agent).privateChat("hello");
     }
 
+    @Test
+    void publicModeSupportsAnonymousChatAndRejectsAnInvalidProvidedToken() {
+        var evidence = mock(cn.watsonzhu.runagent.evidence.RunningEvidenceService.class);
+        when(evidence.collect(eq("跑前热身"), any())).thenReturn(
+                cn.watsonzhu.runagent.evidence.RunningEvidenceService.Bundle.empty());
+        when(agent.privateChat("跑前热身", "")).thenReturn("热身建议");
+        var publicClient = WebTestClient.bindToController(
+                new PrivateChatController(agent, TOKEN, evidence, true, 1)).build();
+        publicClient.post().uri("/api/v1/chat").header("Content-Type", "application/json")
+                .header("Authorization", "Bearer invalid").bodyValue("{\"message\":\"跑前热身\"}")
+                .exchange().expectStatus().isUnauthorized();
+        publicClient.post().uri("/api/v1/chat").header("Content-Type", "application/json")
+                .bodyValue("{\"message\":\"跑前热身\",\"context\":{\"city\":\"上海\"}}")
+                .exchange().expectStatus().isOk().expectBody()
+                .jsonPath("$.content").isEqualTo("热身建议")
+                .jsonPath("$.evidence.weather.status").isEqualTo("NOT_REQUESTED");
+    }
+
     private WebTestClient.ResponseSpec post(String body, String token) {
         var request = client.post().uri("/api/v1/chat").header("Content-Type", "application/json");
         if (token != null) request.header("Authorization", "Bearer " + token);

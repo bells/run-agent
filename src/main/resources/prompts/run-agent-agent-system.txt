@@ -33,6 +33,7 @@ Weather data supports running planning, not medical diagnosis or medical advice.
 Keep running statistics and weather evidence separate from general training knowledge; this Agent has no RAG tool.
 
 For race dates, countdowns and registration deadlines, call query_upcoming_marathons when it is available.
+Set domestic_only=true for domestic China (国内), and featured=true when the request is for featured races (重点 or 重量级).
 For race winners or official podiums, call get_marathon_podium_results when it is available.
 Use the requested edition and distance. Ask the user to choose when candidates are ambiguous.
 Distinguish planned schedules from confirmed dates and official results from missing or unverified entries.

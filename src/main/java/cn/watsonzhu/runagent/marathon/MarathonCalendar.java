@@ -35,6 +35,8 @@ public final class MarathonCalendar {
     private static final int MAX_LIMIT = 30;
     private static final Set<String> FEATURED_TAGS = Set.of("major", "world_athletics_label", "domestic_featured",
             "international_featured");
+    private static final Set<String> DOMESTIC_COUNTRIES = Set.of("中国", "中国大陆", "中国香港", "中国澳门", "中国台湾",
+            "china", "cn", "chn");
 
     private final ObjectReader reader;
     private final Path snapshot;
@@ -83,7 +85,7 @@ public final class MarathonCalendar {
     }
 
     public CalendarResult query(String city, String month, String distance, Integer limit, String raceName,
-                                boolean featured) {
+                                boolean featured, boolean domesticOnly) {
         CalendarSnapshot data = current();
         if (limit != null && limit < 1 || tooLong(city, 80) || tooLong(raceName, 160)
                 || tooLong(distance, 40) || tooLong(month, 7)) {
@@ -109,6 +111,7 @@ public final class MarathonCalendar {
         Instant now = clock.instant();
         var entries = data.events().stream()
                 .filter(event -> bySeriesId.containsKey(event.seriesId()))
+                .filter(event -> !domesticOnly || DOMESTIC_COUNTRIES.contains(normalizeName(event.country())))
                 .filter(event -> selectedDistance == null || event.distances().contains(selectedDistance))
                 .filter(event -> locality.isEmpty() || locality.equals(normalizePlace(event.city()))
                         || locality.equals(normalizePlace(event.province())))

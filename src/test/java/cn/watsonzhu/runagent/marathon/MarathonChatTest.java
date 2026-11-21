@@ -33,6 +33,22 @@ class MarathonChatTest {
     }
 
     @Test
+    void domesticFeaturedQueryFiltersBeforeLimitingTheList() {
+        var answer = chat.query("接下来国内有哪些重量级马拉松赛事", AdviceContext.NONE, false).orElseThrow();
+
+        assertThat(answer.content()).contains("上海马拉松", "广州马拉松", "厦门马拉松")
+                .doesNotContain("瓦伦西亚马拉松", "檀香山马拉松", "三亚马拉松");
+        assertThat(answer.adviceRequested()).isFalse();
+    }
+
+    @Test
+    void domesticAndOverseasQueryStillIncludesBoth() {
+        var answer = chat.query("接下来国内外有哪些重量级马拉松赛事", AdviceContext.NONE, false).orElseThrow();
+
+        assertThat(answer.content()).contains("广州马拉松", "瓦伦西亚马拉松", "檀香山马拉松");
+    }
+
+    @Test
     void warnsWhenTheStatedIsoDateDisagreesWithTheOfficialSchedule() {
         var answer = chat.query("我 2026-12-28 跑重庆半马，赛前怎么训练？", AdviceContext.NONE, false).orElseThrow();
 

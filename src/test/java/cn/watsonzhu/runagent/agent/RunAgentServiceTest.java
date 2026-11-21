@@ -55,7 +55,7 @@ class RunAgentServiceTest {
     @Test
     void legacyAgentExecutesBothReadOnlyMarathonToolsAndIncludesThemInTheTrace() {
         MarathonService marathons = mock(MarathonService.class);
-        when(marathons.calendar("重庆", "2026-12", "HALF_MARATHON", null, null, false))
+        when(marathons.calendar("重庆", "2026-12", "HALF_MARATHON", null, null, true, true))
                 .thenReturn(new CalendarResult(Status.NO_MATCH, List.of(), null, null));
         when(marathons.podium("重庆半马", 2025, "Women", null, false, false))
                 .thenReturn(new PodiumResult(Status.NOT_CACHED, null, 2025, List.of(), "重庆半程马拉松"));
@@ -68,7 +68,8 @@ class RunAgentServiceTest {
             @Override public ChatResponse call(Prompt prompt) {
                 return switch (rounds.getAndIncrement()) {
                     case 0 -> toolCall("query_upcoming_marathons",
-                            "{\"city\":\"重庆\",\"month\":\"2026-12\",\"distance\":\"HALF_MARATHON\"}");
+                            "{\"city\":\"重庆\",\"month\":\"2026-12\",\"distance\":\"HALF_MARATHON\","
+                                    + "\"featured\":true,\"domestic_only\":true}");
                     case 1 -> {
                         assertThat(prompt.getInstructions().stream().filter(ToolResponseMessage.class::isInstance)
                                 .map(ToolResponseMessage.class::cast).flatMap(message -> message.getResponses().stream())
@@ -89,7 +90,7 @@ class RunAgentServiceTest {
                 () -> new org.springframework.ai.tool.ToolCallback[0], memory(),
                 cn.watsonzhu.runagent.observability.ObservationTestSupport.noop(), Optional.of(new MarathonTools(marathons)));
 
-        var result = service.agent("race", "12月有什么重庆半马？去年重庆半马女子组前三是谁？");
+        var result = service.agent("race", "12月有哪些国内重点半马，重庆的？去年重庆半马女子组前三是谁？");
 
         assertThat(result.toolCallCount()).isEqualTo(2);
         assertThat(result.content()).contains("暂无已核验的成绩");

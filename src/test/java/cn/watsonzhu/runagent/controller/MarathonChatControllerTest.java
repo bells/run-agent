@@ -124,7 +124,7 @@ class MarathonChatControllerTest {
                 List.of(new CalendarEntry(event, series.name(), series.aliases(), 36, null)), CLOCK.instant(),
                 LocalDate.parse("2027-02-21"));
         when(marathons.series()).thenReturn(List.of(series));
-        when(marathons.calendar(isNull(), any(), eq("HALF_MARATHON"), any(), eq(series.name()), eq(false)))
+        when(marathons.calendar(isNull(), any(), eq("HALF_MARATHON"), any(), eq(series.name()), eq(false), eq(false)))
                 .thenReturn(result);
     }
 

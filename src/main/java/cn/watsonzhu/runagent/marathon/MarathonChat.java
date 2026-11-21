@@ -42,7 +42,7 @@ public final class MarathonChat {
     private static final String EVENT_WORD = "(?:路跑|跑步)?(?:比赛|赛事|马拉松|全马|半马)";
     private static final Pattern CALENDAR_LIST = Pattern.compile(
             "(?:有(?:哪些|什么|啥)|哪几场|有哪些热门|推荐.{0,8}|列出|查一下)\\s*" + EVENT_WORD
-                    + "|(?:比赛|赛事)(?:日历|赛历)|热门(?:的)?(?:比赛|赛事|马拉松|半马|全马)|重点(?:的)?(?:赛事|马拉松)"
+                    + "|(?:比赛|赛事)(?:日历|赛历)|(?:热门|重点|重量级)(?:的)?(?:比赛|赛事|马拉松|半马|全马)"
                     + "|(?:最近|接下来|近三个月|未来三个月|下个?月|本月|\\d{1,2}\\s*月).{0,18}"
                     + "(?:有|有哪些|有什么).{0,8}" + EVENT_WORD);
     private static final Pattern SCHEDULE = Pattern.compile("赛程|赛历|竞赛规程|开跑|开赛|起跑|开幕|比赛日期|举办"
@@ -71,6 +71,8 @@ public final class MarathonChat {
     private static final Pattern EXPLICIT_CITY = Pattern.compile(
             "(?:^|在|查|看|想了解)([\\p{IsHan}]{2,8}(?:省|市|自治区|特别行政区))(?=.{0,16}(?:什么|哪些|赛事|比赛|马拉松))"
                     + "|在([\\p{IsHan}]{2,8}?)(?=附近|有(?:什么|哪些)|下个?月|这个月|\\d{1,2}\\s*月)");
+    private static final Pattern DOMESTIC = Pattern.compile("国内(?!外)|中国境内|中国大陆");
+    private static final Pattern FEATURED = Pattern.compile("热门|重点|重量级|大满贯");
     private static final Pattern ATHLETE = Pattern.compile(
             "^(?:(?:请|帮我(?:查|看)(?:一下)?|查(?:询|一下)?|想知道|选手|运动员)\\s*)*"
                     + "([\\p{IsHan}·]{2,20}?|[a-z][a-z .'-]{1,79}?)\\s*"
@@ -149,8 +151,9 @@ public final class MarathonChat {
         boolean hasDate = providedDate.find();
         String selectedMonth = race != null && hasDate ? null : month(text, today);
         String locality = race == null ? locality(text, context) : null;
-        boolean featured = race == null && (text.contains("热门") || text.contains("重点") || text.contains("大满贯"));
-        CalendarResult calendar = marathons.calendar(locality, selectedMonth, distance, null, race, featured);
+        boolean featured = race == null && matches(FEATURED, text);
+        CalendarResult calendar = marathons.calendar(locality, selectedMonth, distance, null, race, featured,
+                matches(DOMESTIC, text));
         var entries = calendar.events().stream()
                 .filter(entry -> race == null || year == null || hasDate || podium || entry.event().year() == year)
                 .toList();

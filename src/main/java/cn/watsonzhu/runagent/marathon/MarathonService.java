@@ -65,8 +65,8 @@ public final class MarathonService {
     }
 
     public CalendarResult calendar(String city, String month, String distance, Integer limit, String raceName,
-                                    boolean featured) {
-        return calendar.query(city, month, distance, limit, raceName, featured);
+                                    boolean featured, boolean domesticOnly) {
+        return calendar.query(city, month, distance, limit, raceName, featured, domesticOnly);
     }
 
     public PodiumResult podium(String raceName, Integer year, String category, String distance, boolean allowFill,

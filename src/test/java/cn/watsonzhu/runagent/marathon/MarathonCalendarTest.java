@@ -26,7 +26,7 @@ class MarathonCalendarTest {
     @Test
     void findsChongqingHalfByCityMonthDistanceAndAliasUsingRaceTimezone() {
         var calendar = new MarathonCalendar(JSON, null, CLOCK);
-        var result = calendar.query("重庆市", "2026-12", "半马", 10, "重庆半马", false);
+        var result = calendar.query("重庆市", "2026-12", "半马", 10, "重庆半马", false, false);
 
         assertThat(result.status()).isEqualTo(Status.READY);
         assertThat(result.events()).singleElement().satisfies(entry -> {
@@ -34,10 +34,10 @@ class MarathonCalendarTest {
             assertThat(entry.event().raceDate()).isEqualTo(LocalDate.parse("2026-12-27"));
             assertThat(entry.daysUntilRace()).isEqualTo(36);
         });
-        assertThat(calendar.query("重庆", "2026-12", "MARATHON", 10, null, false).events()).isEmpty();
-        assertThat(calendar.query("广东省", "2026-12", null, null, null, false).events())
+        assertThat(calendar.query("重庆", "2026-12", "MARATHON", 10, null, false, false).events()).isEmpty();
+        assertThat(calendar.query("广东省", "2026-12", null, null, null, false, false).events())
                 .extracting(entry -> entry.event().eventId()).contains("guangzhou_marathon_2026");
-        assertThat(calendar.query(null, "2026-13", null, null, null, false).status()).isEqualTo(Status.INVALID);
+        assertThat(calendar.query(null, "2026-13", null, null, null, false, false).status()).isEqualTo(Status.INVALID);
     }
 
     @Test
@@ -49,10 +49,10 @@ class MarathonCalendarTest {
         }
         var mounted = calendar.current();
         assertThat(mounted.events()).singleElement().satisfies(event -> assertThat(event.eventId()).isEqualTo("fixture_half_2026"));
-        assertThat(calendar.query(null, "2026-12", null, null, null, false).events()).singleElement()
+        assertThat(calendar.query(null, "2026-12", null, null, null, false, false).events()).singleElement()
                 .satisfies(entry -> assertThat(entry.daysUntilRegistrationDeadline()).isEqualTo(-1));
-        assertThat(calendar.query(null, "2027-02", null, null, null, false).status()).isEqualTo(Status.PARTIAL);
-        assertThat(calendar.query(null, "2027-03", null, null, null, false).status()).isEqualTo(Status.NO_MATCH);
+        assertThat(calendar.query(null, "2027-02", null, null, null, false, false).status()).isEqualTo(Status.PARTIAL);
+        assertThat(calendar.query(null, "2027-03", null, null, null, false, false).status()).isEqualTo(Status.NO_MATCH);
         Files.writeString(path, "{\"schema_version\":2}");
         assertThat(calendar.current()).isSameAs(mounted);
         Files.delete(path);

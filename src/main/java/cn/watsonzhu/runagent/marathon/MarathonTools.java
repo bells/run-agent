@@ -33,9 +33,10 @@ public final class MarathonTools {
             @ToolParam(required = false, description = "Maximum rows, 1 to 30, default 10") Integer limit,
             @ToolParam(required = false, description = "Known race name or alias for a particular race") String race_name,
             @ToolParam(required = false, description = "True to limit to featured races") Boolean featured,
+            @ToolParam(required = false, description = "True to limit to races within China when the user asks for 国内") Boolean domestic_only,
             ToolContext context) {
         return execute(CALENDAR, context, () -> service.calendar(city, month, distance, limit, race_name,
-                Boolean.TRUE.equals(featured)));
+                Boolean.TRUE.equals(featured), Boolean.TRUE.equals(domestic_only)));
     }
 
     @Tool(name = PODIUM, description = "Read the verified official podium for a known marathon or half marathon. "

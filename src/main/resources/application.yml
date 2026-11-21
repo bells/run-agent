@@ -69,6 +69,7 @@ run-agent:
     snapshot: ${RUN_AGENT_MARATHON_SNAPSHOT:}
     podium-directory: ${RUN_AGENT_MARATHON_PODIUM_DIR:.run-agent/marathon-podiums}
     lookup-enabled: ${RUN_AGENT_MARATHON_LOOKUP_ENABLED:false}
+    schedule-enabled: ${RUN_AGENT_MARATHON_SCHEDULE_ENABLED:false}
     tavily-api-key: ${RUN_AGENT_MARATHON_TAVILY_API_KEY:}
   run-review:
     enabled: ${RUN_AGENT_RUN_REVIEW_ENABLED:false}

@@ -3,9 +3,11 @@ package cn.watsonzhu.runagent.marathon;
 import java.text.Normalizer;
 import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -19,6 +21,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import org.slf4j.Logger;
@@ -32,6 +35,8 @@ public final class MarathonService {
     private static final long LOOKUP_BUDGET = Duration.ofSeconds(10).toNanos();
     private static final long MISS_COOLDOWN = Duration.ofMinutes(3).toNanos();
     private static final int DAILY_LOOKUPS = 12;
+    private static final int MAX_SCHEDULED_LOOKUPS = 6;
+    private static final int BACKFILL_DAYS = 7;
     // Published Chinese spellings used to find the same athletes in the organizer's results.
     private static final Map<String, String> ATHLETE_ALIASES = Map.of(
             "阿塞法", "tigstassefa", "蒂格斯特阿塞法", "tigstassefa", "阿多拉", "guyeadola");
@@ -67,6 +72,44 @@ public final class MarathonService {
     public CalendarResult calendar(String city, String month, String distance, Integer limit, String raceName,
                                     boolean featured, boolean domesticOnly) {
         return calendar.query(city, month, distance, limit, raceName, featured, domesticOnly);
+    }
+
+    void refreshRecentPodiums() {
+        if (lookup == null) {
+            log.info("marathon_podium_backfill status=LOOKUP_UNAVAILABLE");
+            return;
+        }
+        var snapshot = calendar.current();
+        var seriesById = snapshot.series().stream().collect(Collectors.toMap(Series::seriesId, series -> series));
+        Instant now = clock.instant();
+        var targets = snapshot.events().stream()
+                .filter(event -> eligibleForBackfill(event, now))
+                .sorted(Comparator.comparing(Event::raceDate).thenComparing(Event::eventId))
+                .filter(event -> !seriesById.get(event.seriesId()).officialHosts().isEmpty())
+                .flatMap(event -> event.distances().stream().map(distance ->
+                        new BackfillTarget(event, new MarathonPodiumStore.Key(event.eventId(), distance))))
+                .filter(target -> !completeOverall(readCache(target.key(), target.event(), true).orElse(null), null))
+                .limit(MAX_SCHEDULED_LOOKUPS)
+                .toList();
+
+        int checked = 0;
+        int available = 0;
+        for (var target : targets) {
+            if (Thread.currentThread().isInterrupted()) break;
+            checked++;
+            var event = target.event();
+            if (fill(seriesById.get(event.seriesId()), event, event.year(), target.key(), null, FillMode.COMPLETE)
+                    .isPresent()) available++;
+        }
+        log.info("marathon_podium_backfill checked={} available={} interrupted={}",
+                checked, available, Thread.currentThread().isInterrupted());
+    }
+
+    private static boolean eligibleForBackfill(Event event, Instant now) {
+        if (event.status() != EventStatus.CONFIRMED && event.status() != EventStatus.COMPLETED) return false;
+        var todayAtRace = LocalDate.ofInstant(now, ZoneId.of(event.timezone()));
+        long daysAfterRace = ChronoUnit.DAYS.between(event.raceDate(), todayAtRace);
+        return daysAfterRace >= 1 && daysAfterRace <= BACKFILL_DAYS;
     }
 
     public PodiumResult podium(String raceName, Integer year, String category, String distance, boolean allowFill,
@@ -165,19 +208,20 @@ public final class MarathonService {
         if (!allowFill) return status(cached == null && event != null && event.status() == EventStatus.COMPLETED
                 ? Status.PENDING : Status.NOT_CACHED, year, series.name());
 
-        var loaded = fill(series, event, year, key, category, refresh).orElse(cached);
+        var loaded = fill(series, event, year, key, category, refresh ? FillMode.REFRESH : FillMode.ON_MISS)
+                .orElse(cached);
         return hasGroup(loaded, category) || hasWithdrawal(loaded, category) ? project(loaded, category, series.name())
                 : status(Status.UNAVAILABLE, year, series.name());
     }
 
     private Optional<Podium> fill(Series series, Event event, int year, MarathonPodiumStore.Key key, Category category,
-                                  boolean refresh) {
+                                  FillMode mode) {
         long deadline = System.nanoTime() + LOOKUP_BUDGET;
         var mine = new CompletableFuture<Optional<Podium>>();
         var existing = inFlight.putIfAbsent(key, mine);
         if (existing != null) return await(existing, deadline);
         try {
-            var loaded = attemptFill(series, event, year, key, category, refresh, deadline);
+            var loaded = attemptFill(series, event, year, key, category, mode, deadline);
             mine.complete(loaded);
             return loaded;
         } finally {
@@ -187,13 +231,18 @@ public final class MarathonService {
     }
 
     private Optional<Podium> attemptFill(Series series, Event event, int year, MarathonPodiumStore.Key key,
-                                         Category category, boolean refresh, long deadline) {
+                                         Category category, FillMode mode, long deadline) {
         var previous = readCache(key, event, true).orElse(null);
-        if (!refresh && hasGroup(previous, category)) return Optional.of(previous);
+        boolean cacheSatisfiesQuery = switch (mode) {
+            case ON_MISS -> hasGroup(previous, category);
+            case COMPLETE -> completeOverall(previous, null);
+            case REFRESH -> false;
+        };
+        if (cacheSatisfiesQuery) return Optional.of(previous);
         if (!permits.tryAcquire()) return Optional.empty();
         long started = System.nanoTime();
         try {
-            if (!admit(key, refresh)) return Optional.empty();
+            if (!admit(key, mode == FillMode.REFRESH)) return Optional.empty();
             var result = lookup.lookup(series, event, year, key.distance(), deadline);
             if (result.isPresent() && consistent(result.get(), key, series, event, year)
                     && System.nanoTime() < deadline && !Thread.currentThread().isInterrupted()) {
@@ -348,13 +397,19 @@ public final class MarathonService {
                 .anyMatch(group -> (category == null || category == group.category()) && !group.withdrawals().isEmpty());
     }
 
+    private static boolean completeOverall(Podium podium, Category category) {
+        return podium != null && podium.groups().stream()
+                .filter(group -> (category == null || category == group.category())
+                        && group.subCategory() == SubCategory.OVERALL
+                        && group.results().stream().map(Rank::rank).distinct().count() == 3)
+                .count() == (category == null ? 2 : 1);
+    }
+
     private static PodiumResult project(Podium source, Category category, String name) {
         var groups = source.groups().stream()
                 .filter(group -> category == null || category == group.category()).toList();
-        long complete = groups.stream().filter(group -> group.subCategory() == SubCategory.OVERALL
-                && group.results().stream().map(Rank::rank).distinct().count() == 3).count();
         Status state = groups.stream().allMatch(group -> group.results().isEmpty()) ? Status.PENDING
-                : complete == (category == null ? 2 : 1) ? Status.READY : Status.PARTIAL;
+                : completeOverall(source, category) ? Status.READY : Status.PARTIAL;
         var podium = new Podium(source.schemaVersion(), source.eventId(), source.seriesId(), source.year(),
                 source.raceDate(), source.distance(), groups, category == null ? source.highlights() : null,
                 source.updatedAt());
@@ -368,6 +423,10 @@ public final class MarathonService {
     private static PodiumResult status(Status status, Integer year, String name) {
         return new PodiumResult(status, null, year, List.of(), name);
     }
+
+    private enum FillMode { ON_MISS, COMPLETE, REFRESH }
+
+    private record BackfillTarget(Event event, MarathonPodiumStore.Key key) {}
 
     public record PodiumResult(Status status, Podium podium, Integer selectedYear, List<String> candidates,
                                String eventName, Integer unverifiedLaterYear) {

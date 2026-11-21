@@ -146,10 +146,90 @@ class MarathonServiceTest {
                 .isEqualTo(result("chongqing_half", 2024, Distance.HALF_MARATHON));
     }
 
+    @Test
+    void scheduledLookupStartsAfterRaceDayAndSkipsCompleteCachedPodiums() {
+        var searches = new AtomicInteger();
+        MarathonResultLookup provider = (series, event, year, distance, deadline) -> {
+            searches.incrementAndGet();
+            assertThat(event.eventId()).isEqualTo("nanjing_marathon_2026");
+            assertThat(distance).isEqualTo(Distance.MARATHON);
+            return Optional.of(scheduledResult(event, distance, Category.MEN, Category.WOMEN));
+        };
+
+        service(Clock.fixed(Instant.parse("2026-11-21T18:00:00Z"), ZoneOffset.UTC), provider).refreshRecentPodiums();
+        assertThat(searches).hasValue(0);
+
+        var nextMorning = Clock.fixed(Instant.parse("2026-11-22T18:00:00Z"), ZoneOffset.UTC);
+        var service = service(nextMorning, provider);
+        service.refreshRecentPodiums();
+        service.refreshRecentPodiums();
+        assertThat(searches).hasValue(1);
+        assertThat(service(nextMorning, null).podium("南马", null, "All", null, false, false).status())
+                .isEqualTo(Status.READY);
+    }
+
+    @Test
+    void scheduledLookupRetriesUnavailableAndPartialResultsOnFollowingDays() {
+        var searches = new AtomicInteger();
+        MarathonResultLookup provider = (series, event, year, distance, deadline) -> {
+            assertThat(event.eventId()).isEqualTo("nanjing_marathon_2026");
+            return switch (searches.incrementAndGet()) {
+                case 1 -> Optional.empty();
+                case 2 -> Optional.of(scheduledResult(event, distance, Category.MEN));
+                default -> Optional.of(scheduledResult(event, distance, Category.WOMEN));
+            };
+        };
+
+        var first = service(Clock.fixed(Instant.parse("2026-11-22T18:00:00Z"), ZoneOffset.UTC), provider);
+        first.refreshRecentPodiums();
+        assertThat(first.podium("南马", 2026, "All", null, false, false).podium()).isNull();
+
+        var second = service(Clock.fixed(Instant.parse("2026-11-23T18:00:00Z"), ZoneOffset.UTC), provider);
+        second.refreshRecentPodiums();
+        assertThat(second.podium("南马", 2026, "All", null, false, false).status()).isEqualTo(Status.PARTIAL);
+
+        var third = service(Clock.fixed(Instant.parse("2026-11-24T18:00:00Z"), ZoneOffset.UTC), provider);
+        third.refreshRecentPodiums();
+        assertThat(third.podium("南马", 2026, "All", null, false, false).status()).isEqualTo(Status.READY);
+        assertThat(searches).hasValue(3);
+    }
+
+    @Test
+    void scheduledAndManualLookupsShareTheDailySearchBudget() {
+        var searches = new AtomicInteger();
+        var service = service(Clock.fixed(Instant.parse("2026-11-22T18:00:00Z"), ZoneOffset.UTC),
+                (series, event, year, distance, deadline) -> {
+                    searches.incrementAndGet();
+                    return Optional.empty();
+                });
+
+        for (int year = 2000; year < 2012; year++) {
+            service.podium("南马", year, "All", null, true, false);
+        }
+        service.refreshRecentPodiums();
+
+        assertThat(searches).hasValue(12);
+        assertThat(service.podium("南马", 2026, "All", null, false, false).podium()).isNull();
+    }
+
     private MarathonService service(MarathonResultLookup lookup) {
+        return service(CLOCK, lookup);
+    }
+
+    private MarathonService service(Clock clock, MarathonResultLookup lookup) {
         var json = JsonMapper.builder().findAndAddModules().build();
-        return new MarathonService(new MarathonCalendar(json, null, CLOCK),
-                new MarathonPodiumStore(json, directory), lookup, CLOCK);
+        return new MarathonService(new MarathonCalendar(json, null, clock),
+                new MarathonPodiumStore(json, directory), lookup, clock);
+    }
+
+    private static Podium scheduledResult(Event event, Distance distance, Category... categories) {
+        var source = new Source("https://example.test/results", "合成榜单", CLOCK.instant());
+        var groups = java.util.Arrays.stream(categories).map(category -> new Group(category, SubCategory.OVERALL,
+                source, List.of(new Rank(1, "示例冠军", null, "02:11:10", null),
+                new Rank(2, "示例亚军", null, "02:13:10", null),
+                new Rank(3, "示例季军", null, "02:15:10", null)))).toList();
+        return new Podium(1, event.eventId(), event.seriesId(), event.year(), event.raceDate(), distance,
+                groups, null, CLOCK.instant());
     }
 
     private static Podium result(String seriesId, int year, Distance distance) {

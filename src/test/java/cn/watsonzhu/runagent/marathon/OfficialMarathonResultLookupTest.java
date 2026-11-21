@@ -154,7 +154,8 @@ class OfficialMarathonResultLookupTest {
                 <h2>Sample (CAN)</h2><h3>21 SEP 2025</h3><h4>Competition category</h4>
                 <h2>Women's Marathon</h2><h3>Final</h3>
                 <table>
-                  <tr><th>Place</th><th>Name</th><th>Birth Date</th><th></th><th>Mark</th></tr>
+                  <tr><th colspan="1">Place</th><th colspan="1">Name</th><th colspan="1">Birth Date</th>
+                    <th colspan="1"></th><th colspan="1">Mark</th></tr>
                   <tr><td>1.</td><td>Alice North</td><td>12 May 1998</td><td>CAN</td><td>2:20:18</td></tr>
                 </table>
                 """);
@@ -165,6 +166,41 @@ class OfficialMarathonResultLookupTest {
         assertThat(result.orElseThrow().groups()).singleElement()
                 .satisfies(group -> assertThat(group.results())
                         .containsExactly(new Rank(1, "Alice North", null, "02:20:18", null)));
+    }
+
+    @Test
+    void acceptsExactProjectAndCategoryInTheTablesAdjacentLabel() {
+        String official = page("2025 Sample Marathon — 21 SEP 2025", """
+                <section>
+                  <div>Women's Marathon Final</div>
+                  <div><div><table>
+                    <tr><th>Pos.</th><th>Athlete</th><th>Mark</th></tr>
+                    <tr><td>1.</td><td>Alice North</td><td>2:20:18</td></tr>
+                  </table></div></div>
+                </section>
+                """);
+        var result = lookup(new ArrayList<>(), Map.of(SOURCE, official), List.of(SOURCE), unexpectedModel())
+                .lookup(SERIES, event(), 2025, Distance.MARATHON, deadline());
+
+        assertThat(result.orElseThrow().groups()).singleElement().satisfies(group -> {
+            assertThat(group.category()).isEqualTo(Category.WOMEN);
+            assertThat(group.results()).containsExactly(new Rank(1, "Alice North", null, "02:20:18", null));
+        });
+    }
+
+    @Test
+    void readsBothVerifiedPodiumsFromKnownCompletedEditionSourceBeforeSearching() {
+        var seen = new ArrayList<URI>();
+        String womensTable = TABLE.replace("<tr><td>2</td><td>Carey", "<tr><td>3</td><td>Carey");
+        String mensTable = womensTable.replace("Women's", "Men's");
+        var official = page("2025 Sample Marathon — 21 SEP 2025", womensTable + mensTable);
+
+        var result = lookup(seen, Map.of(SOURCE, official), List.of(), unexpectedModel())
+                .lookup(SERIES, event(EventStatus.COMPLETED), 2025, Distance.MARATHON, deadline());
+
+        assertThat(seen).containsExactly(URI.create(SOURCE));
+        assertThat(result.orElseThrow().groups()).extracting(Group::category)
+                .containsExactlyInAnyOrder(Category.MEN, Category.WOMEN);
     }
 
     @Test
@@ -279,8 +315,12 @@ class OfficialMarathonResultLookupTest {
     }
 
     private static Event event() {
+        return event(EventStatus.CONFIRMED);
+    }
+
+    private static Event event(EventStatus status) {
         return new Event("sample_2025", "sample", 2025, RACE_DATE, "UTC", "Sample", null, "Test",
-                List.of(Distance.MARATHON), Map.of(), null, null, EventStatus.COMPLETED,
+                List.of(Distance.MARATHON), Map.of(), null, null, status,
                 new Source(SOURCE, "Sample Organizer", CLOCK.instant()));
     }
 

@@ -55,6 +55,7 @@ final class OfficialMarathonEvidence {
     private static final Pattern NATIONALITY = Pattern.compile("[\\p{L}][\\p{L}.'’ -]{1,35}");
     private static final Pattern NAME = Pattern.compile("[\\p{L}\\p{M}][\\p{L}\\p{M}.'’·・ -]{0,118}[\\p{L}\\p{M}.]|[\\p{L}]");
     private static final Pattern PLACE = Pattern.compile("(?i)(?:T|=)?([123])[.=]?");
+    private static final Pattern ADJACENT_FINAL = Pattern.compile("(?i)(?:women|men)['’]s (?:half )?marathon final");
     private static final Set<String> WITHDRAWN_STATUS = Set.of("dq", "dsq", "disqualified", "取消成绩", "成绩撤销");
     private static final String FINISH = "(?:[0-9]{1,2}:[0-9]{2}:[0-9]{2}|[0-9]{1,2}小时[0-9]{1,2}分[0-9]{1,2}秒)";
     private static final Pattern COLON_TIME = Pattern.compile("([0-9]{1,2}):([0-9]{2}):([0-9]{2})");
@@ -109,7 +110,8 @@ final class OfficialMarathonEvidence {
                     if (++tables <= MAX_TABLES && rows.size() < MAX_TABLE_ROWS
                             && (block.parent() == null || block.parent().closest("table") == null)) {
                         var caption = block.selectFirst("caption");
-                        var scope = scope(caption == null ? null : clean(caption.text()), headers, title, event);
+                        var label = caption == null ? adjacentFinalLabel(block) : clean(caption.text());
+                        var scope = scope(label, headers, title, event);
                         if (scope.distance() == distance && !scope.unsupportedSubgroup()
                                 && matchesEdition(scope.labels(), year, date.get())) {
                             var result = tableRows(block, scope, year, date.get());
@@ -230,7 +232,7 @@ final class OfficialMarathonEvidence {
         for (var row : table.select("tr").stream().limit(MAX_TABLE_ROWS + 1L).toList()) {
             if (row.closest("table") != table) continue;
             var cells = row.children().stream().filter(cell -> cell.normalName().matches("td|th")).toList();
-            if (cells.stream().anyMatch(cell -> cell.hasAttr("colspan") || cell.hasAttr("rowspan"))) {
+            if (cells.stream().anyMatch(cell -> structuralSpan(cell, "colspan") || structuralSpan(cell, "rowspan"))) {
                 // An embedded heading can change the ranking scope of every following row.
                 return new TableResults(List.of(), List.of());
             }
@@ -266,6 +268,21 @@ final class OfficialMarathonEvidence {
             verified.add(new VerifiedRow(group, new Rank(Integer.parseInt(place.group(1)), name, nationality, time, record)));
         }
         return new TableResults(verified, withdrawals);
+    }
+
+    private static String adjacentFinalLabel(Element table) {
+        var container = table;
+        for (int depth = 0; depth <= 2 && container != null; depth++, container = container.parent()) {
+            var label = container.previousElementSibling();
+            if (label == null || label.is("table") || label.selectFirst("table") != null) continue;
+            String text = clean(label.text());
+            if (ADJACENT_FINAL.matcher(text).matches()) return text;
+        }
+        return null;
+    }
+
+    private static boolean structuralSpan(Element cell, String attribute) {
+        return cell.hasAttr(attribute) && !"1".equals(cell.attr(attribute).strip());
     }
 
     private static boolean matchesDistance(String raw, Distance expected) {

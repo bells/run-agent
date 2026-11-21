@@ -93,21 +93,16 @@ public final class OfficialMarathonResultLookup implements MarathonResultLookup 
         if (hosts.isEmpty()) return Optional.empty();
 
         var pages = new ArrayList<SourcedPage>();
-        for (URI candidate : candidates(series, year, distance, hosts, deadlineNanos)) {
-            if (!withinDeadline(deadlineNanos)) return Optional.empty();
-            var html = request(http.get().uri(candidate).accept(MediaType.TEXT_HTML, XHTML),
-                    MAX_HTML_BYTES, deadlineNanos, MediaType.TEXT_HTML, XHTML);
-            if (html.isEmpty()) continue;
-            var page = OfficialMarathonEvidence.read(html.get().bytes(), html.get().type().getCharset(),
-                    series, event, year, distance);
-            if (page.isEmpty() || page.get().raceDate().isAfter(today(event))) continue;
-            var organization = candidate.getHost();
-            if (event != null && event.source().url().equals(candidate.toASCIIString())) {
-                organization = event.source().organization();
-            } else if ("worldathletics.org".equalsIgnoreCase(organization)) {
-                organization = "World Athletics";
+        Optional<URI> knownSource = event != null && event.status() == EventStatus.COMPLETED
+                ? officialUri(event.source().url(), hosts) : Optional.empty();
+        var knownPage = knownSource.flatMap(uri -> fetchPage(uri, series, event, year, distance, deadlineNanos));
+        knownPage.ifPresent(pages::add);
+        if (knownPage.isEmpty() || !completeTable(knownPage.get().page())) {
+            for (URI candidate : candidates(series, year, distance, hosts, deadlineNanos)) {
+                if (!withinDeadline(deadlineNanos)) return Optional.empty();
+                if (knownSource.filter(candidate::equals).isPresent()) continue;
+                fetchPage(candidate, series, event, year, distance, deadlineNanos).ifPresent(pages::add);
             }
-            pages.add(new SourcedPage(page.get(), new Source(candidate.toASCIIString(), organization, clock.instant())));
         }
 
         var dates = pages.stream().map(source -> source.page().raceDate()).distinct().toList();
@@ -127,6 +122,27 @@ public final class OfficialMarathonResultLookup implements MarathonResultLookup 
         String eventId = event == null ? series.seriesId() + "_" + year : event.eventId();
         return Optional.of(new Podium(1, eventId, series.seriesId(), year, dates.getFirst(), distance,
                 List.copyOf(groups.values()), null, clock.instant()));
+    }
+
+    private Optional<SourcedPage> fetchPage(URI candidate, Series series, Event event, int year, Distance distance,
+                                            long deadline) {
+        var html = request(http.get().uri(candidate).accept(MediaType.TEXT_HTML, XHTML),
+                MAX_HTML_BYTES, deadline, MediaType.TEXT_HTML, XHTML);
+        if (html.isEmpty()) return Optional.empty();
+        var page = OfficialMarathonEvidence.read(html.get().bytes(), html.get().type().getCharset(),
+                series, event, year, distance).filter(result -> !result.raceDate().isAfter(today(event)));
+        String host = candidate.getHost();
+        String organization = event != null && event.source().url().equals(candidate.toASCIIString())
+                ? event.source().organization() : "worldathletics.org".equalsIgnoreCase(host) ? "World Athletics" : host;
+        return page.map(result -> new SourcedPage(result,
+                new Source(candidate.toASCIIString(), organization, clock.instant())));
+    }
+
+    private static boolean completeTable(Page page) {
+        return page.withdrawals().isEmpty() && Arrays.stream(Category.values()).allMatch(category ->
+                page.tableRows().stream().filter(row -> row.group().category() == category
+                                && row.group().subCategory() == SubCategory.OVERALL)
+                        .map(row -> row.rank().rank()).distinct().count() == 3);
     }
 
     private List<URI> candidates(Series series, int year, Distance distance, Set<String> hosts, long deadline) {

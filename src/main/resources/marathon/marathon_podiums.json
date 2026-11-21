@@ -1,0 +1,154 @@
+[
+  {
+    "schema_version": 1,
+    "event_id": "chongqing_half_2025",
+    "series_id": "chongqing_half",
+    "year": 2025,
+    "race_date": "2025-12-21",
+    "distance": "HALF_MARATHON",
+    "groups": [
+      {
+        "category": "MEN",
+        "sub_category": "OVERALL",
+        "source": {
+          "url": "https://www.cqbn.gov.cn/zwgk_252/zfxxgkml/ggqsy/whly/ggwhty/202512/t20251222_15260498.html",
+          "organization": "重庆市巴南区人民政府",
+          "verified_at": "2026-11-21T03:45:00Z"
+        },
+        "results": [
+          {
+            "rank": 1,
+            "athlete_name": "沙正友",
+            "nationality": null,
+            "finish_time": "01:05:24",
+            "is_course_record": null
+          },
+          {
+            "rank": 2,
+            "athlete_name": "丁承旭",
+            "nationality": null,
+            "finish_time": "01:06:30",
+            "is_course_record": null
+          },
+          {
+            "rank": 3,
+            "athlete_name": "吴志锦",
+            "nationality": null,
+            "finish_time": "01:06:40",
+            "is_course_record": null
+          }
+        ]
+      },
+      {
+        "category": "WOMEN",
+        "sub_category": "OVERALL",
+        "source": {
+          "url": "https://www.cqbn.gov.cn/zwgk_252/zfxxgkml/ggqsy/whly/ggwhty/202512/t20251222_15260498.html",
+          "organization": "重庆市巴南区人民政府",
+          "verified_at": "2026-11-21T03:45:00Z"
+        },
+        "results": [
+          {
+            "rank": 1,
+            "athlete_name": "刘君慧",
+            "nationality": null,
+            "finish_time": "01:13:37",
+            "is_course_record": null
+          },
+          {
+            "rank": 2,
+            "athlete_name": "叶瑞",
+            "nationality": null,
+            "finish_time": "01:19:47",
+            "is_course_record": null
+          },
+          {
+            "rank": 3,
+            "athlete_name": "方可馨",
+            "nationality": null,
+            "finish_time": "01:21:12",
+            "is_course_record": null
+          }
+        ]
+      }
+    ],
+    "highlights": null,
+    "updated_at": "2026-11-21T03:45:00Z"
+  },
+  {
+    "schema_version": 1,
+    "event_id": "berlin_marathon_2026",
+    "series_id": "berlin_marathon",
+    "year": 2026,
+    "race_date": "2026-09-27",
+    "distance": "MARATHON",
+    "groups": [
+      {
+        "category": "MEN",
+        "sub_category": "OVERALL",
+        "source": {
+          "url": "https://www.generali-berlin-marathon.com/fileadmin/media/events/berlinmarathon/PDFs/press_releases/27-09-2026_Recap_en.pdf",
+          "organization": "SCC EVENTS",
+          "verified_at": "2026-11-21T03:45:00Z"
+        },
+        "results": [
+          {
+            "rank": 1,
+            "athlete_name": "Guye Adola",
+            "nationality": "ETH",
+            "finish_time": "02:02:50",
+            "is_course_record": null
+          },
+          {
+            "rank": 2,
+            "athlete_name": "Gemechu Diriba",
+            "nationality": "ETH",
+            "finish_time": "02:03:19",
+            "is_course_record": null
+          },
+          {
+            "rank": 3,
+            "athlete_name": "Gabriel Geay",
+            "nationality": "TAN",
+            "finish_time": "02:03:59",
+            "is_course_record": null
+          }
+        ]
+      },
+      {
+        "category": "WOMEN",
+        "sub_category": "OVERALL",
+        "source": {
+          "url": "https://www.generali-berlin-marathon.com/fileadmin/media/events/berlinmarathon/PDFs/press_releases/27-09-2026_Recap_en.pdf",
+          "organization": "SCC EVENTS",
+          "verified_at": "2026-11-21T03:45:00Z"
+        },
+        "results": [
+          {
+            "rank": 1,
+            "athlete_name": "Tigst Assefa",
+            "nationality": "ETH",
+            "finish_time": "02:11:04",
+            "is_course_record": true
+          },
+          {
+            "rank": 2,
+            "athlete_name": "Bedatu Hirpa",
+            "nationality": "ETH",
+            "finish_time": "02:16:53",
+            "is_course_record": null
+          },
+          {
+            "rank": 3,
+            "athlete_name": "Dera Dida",
+            "nationality": "ETH",
+            "finish_time": "02:16:55",
+            "is_course_record": null
+          }
+        ]
+      }
+    ],
+    "highlights": "Tigst Assefa 以 2 小时 11 分 04 秒刷新女子赛道纪录。",
+    "updated_at": "2026-11-21T03:45:00Z"
+  }
+]

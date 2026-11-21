@@ -1,0 +1,78 @@
+{
+  "seed": "../src/main/resources/marathon/marathon_events.json",
+  "calendar_url": "https://chinamarathon.com/",
+  "organization": "中国马拉松赛历",
+  "max_pages": 7,
+  "matches": [
+    {
+      "series_id": "nanjing_marathon",
+      "name_pattern": "(?P<year>[0-9]{4})(?:南京银行)?南京马拉松(?:暨大运河马拉松系列赛\\(南京站\\))?",
+      "city": "南京",
+      "province": "江苏",
+      "distances": ["MARATHON"]
+    },
+    {
+      "series_id": "qiandaohu_marathon",
+      "name_pattern": "(?P<year>[0-9]{4})千岛湖马拉松",
+      "city": "杭州",
+      "province": "浙江",
+      "distances": ["MARATHON", "HALF_MARATHON"]
+    },
+    {
+      "series_id": "xiamen_haicang_half",
+      "name_pattern": "(?P<year>[0-9]{4})(?:盈趣科技)?厦门海沧半程马拉松",
+      "city": "厦门",
+      "province": "福建",
+      "distances": ["HALF_MARATHON"]
+    },
+    {
+      "series_id": "guangzhou_marathon",
+      "name_pattern": "(?P<year>[0-9]{4})(?:广汽丰田)?广州马拉松(?:赛)?",
+      "city": "广州",
+      "province": "广东",
+      "distances": ["MARATHON"]
+    },
+    {
+      "series_id": "chongqing_half",
+      "name_pattern": "(?P<year>[0-9]{4})重庆半程马拉松",
+      "city": "重庆",
+      "province": null,
+      "distances": ["HALF_MARATHON"]
+    },
+    {
+      "series_id": "sanya_marathon",
+      "name_pattern": "(?P<year>[0-9]{4})(?:海南\\(三亚\\)|三亚)马拉松",
+      "city": "三亚",
+      "province": "海南",
+      "distances": ["MARATHON"]
+    },
+    {
+      "series_id": "shanghai_marathon",
+      "name_pattern": "(?P<year>[0-9]{4})上海马拉松",
+      "city": "上海",
+      "province": null,
+      "distances": ["MARATHON"]
+    },
+    {
+      "series_id": "chongqing_marathon",
+      "name_pattern": "(?P<year>[0-9]{4})重庆马拉松",
+      "city": "重庆",
+      "province": null,
+      "distances": ["MARATHON"]
+    },
+    {
+      "series_id": "xiamen_marathon",
+      "name_pattern": "(?P<year>[0-9]{4})(?:建发)?厦门马拉松(?:赛)?",
+      "city": "厦门",
+      "province": "福建",
+      "distances": ["MARATHON"]
+    },
+    {
+      "series_id": "beijing_marathon",
+      "name_pattern": "(?P<year>[0-9]{4})(?:中国银行)?北京马拉松(?:暨全国马拉松锦标赛)?",
+      "city": "北京",
+      "province": null,
+      "distances": ["MARATHON"]
+    }
+  ]
+}

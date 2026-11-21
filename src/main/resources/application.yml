@@ -64,6 +64,12 @@ run-agent:
     review-daily-limit: ${RUN_AGENT_PUBLIC_REVIEW_DAILY_LIMIT:8}
   legacy-api:
     enabled: ${RUN_AGENT_LEGACY_API_ENABLED:true}
+  marathon:
+    enabled: ${RUN_AGENT_MARATHON_ENABLED:false}
+    snapshot: ${RUN_AGENT_MARATHON_SNAPSHOT:}
+    podium-directory: ${RUN_AGENT_MARATHON_PODIUM_DIR:.run-agent/marathon-podiums}
+    lookup-enabled: ${RUN_AGENT_MARATHON_LOOKUP_ENABLED:false}
+    tavily-api-key: ${RUN_AGENT_MARATHON_TAVILY_API_KEY:}
   run-review:
     enabled: ${RUN_AGENT_RUN_REVIEW_ENABLED:false}
     generation-enabled: ${RUN_AGENT_RUN_REVIEW_GENERATION_ENABLED:false}

@@ -40,6 +40,7 @@ dependencies {
     implementation 'org.springframework.ai:spring-ai-vector-store-advisor'
     implementation 'org.springframework.ai:spring-ai-autoconfigure-vector-store-observation'
     implementation 'org.springframework.ai:spring-ai-tika-document-reader'
+    implementation 'org.jsoup:jsoup:1.22.2'
     implementation 'org.bsc.langgraph4j:langgraph4j-core:1.8.27'
     implementation 'io.github.resilience4j:resilience4j-retry:2.4.0'
     implementation 'io.github.resilience4j:resilience4j-circuitbreaker:2.4.0'

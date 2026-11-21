@@ -3,16 +3,19 @@ package cn.watsonzhu.runagent.controller;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeoutException;
 
 import cn.watsonzhu.runagent.agent.RunAgentService;
 import cn.watsonzhu.runagent.evidence.AdviceContext;
 import cn.watsonzhu.runagent.evidence.RunningEvidenceService;
+import cn.watsonzhu.runagent.evidence.RunningEvidenceService.Bundle;
 import cn.watsonzhu.runagent.evidence.RunningEvidenceService.Evidence;
+import cn.watsonzhu.runagent.exception.AiRequestException;
+import cn.watsonzhu.runagent.marathon.MarathonChat;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import org.springframework.beans.factory.annotation.Autowired;
-import cn.watsonzhu.runagent.exception.AiRequestException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.CacheControl;
@@ -37,6 +40,7 @@ public class PrivateChatController {
     private final RunAgentService agent;
     private final PrivateApiAccess access;
     private final RunningEvidenceService evidence;
+    private final MarathonChat marathons;
     private final boolean publicEnabled;
     private final Admission owner = new Admission(Integer.MAX_VALUE);
     private final Admission visitor;
@@ -44,12 +48,23 @@ public class PrivateChatController {
     @Autowired
     public PrivateChatController(RunAgentService agent, @Value("${run-agent.private-chat.token:}") String token,
             RunningEvidenceService evidence, @Value("${run-agent.public-api.enabled:false}") boolean publicEnabled,
-            @Value("${run-agent.public-api.chat-daily-limit:40}") int publicDailyLimit) {
+            @Value("${run-agent.public-api.chat-daily-limit:40}") int publicDailyLimit, Optional<MarathonChat> marathons) {
+        this(agent, token, evidence, publicEnabled, publicDailyLimit, marathons.orElse(null));
+    }
+
+    PrivateChatController(RunAgentService agent, String token, RunningEvidenceService evidence,
+                          boolean publicEnabled, int publicDailyLimit, MarathonChat marathons) {
         this.agent = agent;
         this.access = new PrivateApiAccess(token);
         this.evidence = evidence;
+        this.marathons = marathons;
         this.publicEnabled = publicEnabled;
         this.visitor = new Admission(publicDailyLimit);
+    }
+
+    public PrivateChatController(RunAgentService agent, String token, RunningEvidenceService evidence,
+                                 boolean publicEnabled, int publicDailyLimit) {
+        this(agent, token, evidence, publicEnabled, publicDailyLimit, Optional.empty());
     }
 
     PrivateChatController(RunAgentService agent, String token) {
@@ -68,18 +83,23 @@ public class PrivateChatController {
         return body.flatMap(node -> {
                     var request = PrivateChatRequest.from(node);
                     return request == null ? Mono.just(invalid(requestId))
-                            : answer(requestId, request, anonymous ? visitor : owner);
+                            : answer(requestId, request, !anonymous);
                 })
                 .switchIfEmpty(Mono.fromSupplier(() -> invalid(requestId)))
                 .onErrorResume(ServerWebInputException.class, exception -> Mono.just(invalid(requestId)));
     }
 
-    private Mono<ResponseEntity<?>> answer(String requestId, PrivateChatRequest request, Admission admission) {
+    private Mono<ResponseEntity<?>> answer(String requestId, PrivateChatRequest request, boolean ownerAuthorized) {
+        Admission admission = ownerAuthorized ? owner : visitor;
         return Mono.<ResponseEntity<?>>fromCallable(() -> {
                     if (!admission.tryStart()) {
                         return error(429, requestId, "RATE_LIMITED", "The request limit has been reached. Try again later.");
                     }
                     try {
+                        if (marathons != null) {
+                            var race = marathons.query(request.message(), request.context(), ownerAuthorized);
+                            if (race.isPresent()) return answerMarathon(requestId, request, race.orElseThrow());
+                        }
                         var bundle = evidence != null && (publicEnabled || !request.context().equals(AdviceContext.NONE))
                                 ? evidence.collect(request.message(), request.context().withChatHints(request.message()))
                                 : null;
@@ -90,9 +110,7 @@ public class PrivateChatController {
                         }
                         return content == null || content.isBlank()
                                 ? error(502, requestId, "AI_SERVICE_ERROR", "The AI service returned no answer.")
-                                : ResponseEntity.ok().cacheControl(CacheControl.noStore())
-                                        .body(new PrivateChatResponse(requestId, content,
-                                                bundle == null ? null : bundle.evidence()));
+                                : success(requestId, content, bundle);
                     } finally {
                         admission.finish();
                     }
@@ -103,6 +121,41 @@ public class PrivateChatController {
                         Mono.just(error(502, requestId, "AI_SERVICE_ERROR", "The AI service is temporarily unavailable.")))
                 .onErrorResume(TimeoutException.class, exception ->
                         Mono.just(error(504, requestId, "AI_SERVICE_ERROR", "The AI request timed out.")));
+    }
+
+    private ResponseEntity<?> answerMarathon(String requestId, PrivateChatRequest request, MarathonChat.Reply race) {
+        Bundle bundle = evidence != null && (race.adviceRequested() || race.weatherContext().city() != null)
+                ? evidence.collect(race.adviceRequested() ? request.message() : null, race.weatherContext())
+                : null;
+        String content = race.content();
+        String weather = race.weatherSummary(bundle == null ? null : bundle.evidence().weather());
+        if (!weather.isBlank()) content += "\n\n" + weather;
+        if (race.adviceRequested()) {
+            String modelEvidence = (bundle == null ? "" : bundle.promptContext()) + "\n" + race.modelContext();
+            content += "\n\n" + marathonAdvice(request.message(), modelEvidence, bundle, race);
+        }
+        return success(requestId, content, bundle);
+    }
+
+    private String marathonAdvice(String message, String modelEvidence, Bundle bundle, MarathonChat.Reply race) {
+        try {
+            String advice = agent.privateChat(message, modelEvidence + """
+
+                    Answer only the training or preparation question. The server appends verified race facts and weather.
+                    Use the supplied race context to tailor the advice and do not restate the dates, rankings, forecast
+                    measurements, or source claims. If relevant evidence is unavailable, retain that uncertainty.
+                    """);
+            if (advice != null && !advice.isBlank() && race.allowsAdvice(advice)
+                    && (bundle == null || bundle.allowsAnswer(advice))) return advice;
+        } catch (AiRequestException exception) {
+            // The model outcome does not affect independent race and forecast evidence already collected.
+        }
+        return "训练建议暂不可用。";
+    }
+
+    private static ResponseEntity<?> success(String requestId, String content, Bundle bundle) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(new PrivateChatResponse(requestId, content, bundle == null ? null : bundle.evidence()));
     }
 
     private static final class Admission {

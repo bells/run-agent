@@ -22,7 +22,7 @@ fail() {
 
 docker() {
   if [[ $docker_sudo == true ]]; then
-    command sudo -n --preserve-env=RUN_AGENT_PROVIDER_FILE,RUN_AGENT_PRIVATE_FILE,RUN_AGENT_DATA_DIR,RUN_AGENT_PUBLIC_DATA_DIR,RUN_AGENT_KNOWLEDGE_DIR docker "$@"
+    command sudo -n --preserve-env=RUN_AGENT_PROVIDER_FILE,RUN_AGENT_PRIVATE_FILE,RUN_AGENT_DATA_DIR,RUN_AGENT_PUBLIC_DATA_DIR,RUN_AGENT_KNOWLEDGE_DIR,RUN_AGENT_MARATHON_DATA_DIR docker "$@"
   else
     command docker "$@"
   fi
@@ -48,6 +48,7 @@ compose() {
   valid_release "$release" || fail "Invalid release ID."
   local directory="$releases/$release"
   local -x RUN_AGENT_DATA_DIR="$legacy_data_dir"
+  local -x RUN_AGENT_MARATHON_DATA_DIR="$release_root/marathon-data"
   local options=(--project-name "$project")
   if [[ -f $release_root/runtime.env ]]; then
     options+=(--env-file "$release_root/runtime.env")
@@ -61,6 +62,7 @@ compose() {
     fi
   fi
   prepare_data_directory || return
+  mkdir -p -m 755 -- "$RUN_AGENT_MARATHON_DATA_DIR" || return
   docker compose "${options[@]}" "$@"
 }
 

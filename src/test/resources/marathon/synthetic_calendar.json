@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "published_at": "2026-11-21T01:00:00Z",
+  "coverage_through": "2026-12-31",
+  "series": [
+    {
+      "series_id": "fixture_half",
+      "name": "示例半程马拉松",
+      "aliases": ["示例半马"],
+      "tags": ["domestic_featured"],
+      "official_hosts": ["result.example"]
+    }
+  ],
+  "events": [
+    {
+      "event_id": "fixture_half_2026",
+      "series_id": "fixture_half",
+      "year": 2026,
+      "race_date": "2026-12-06",
+      "timezone": "Asia/Shanghai",
+      "city": "示例市",
+      "province": "示例省",
+      "country": "中国",
+      "distances": ["HALF_MARATHON"],
+      "start_times": {"HALF_MARATHON": "08:30"},
+      "reg_deadline": "2026-11-20",
+      "cert_level": null,
+      "status": "CONFIRMED",
+      "source": {
+        "url": "https://result.example/fixture/2026",
+        "organization": "示例赛事组委会",
+        "verified_at": "2026-11-21T01:00:00Z"
+      }
+    }
+  ]
+}

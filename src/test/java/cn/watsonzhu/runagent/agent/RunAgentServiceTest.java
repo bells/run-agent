@@ -10,11 +10,17 @@ import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import cn.watsonzhu.runagent.exception.AiRequestException;
 import cn.watsonzhu.runagent.exception.StructuredOutputException;
+import cn.watsonzhu.runagent.marathon.MarathonData.CalendarResult;
+import cn.watsonzhu.runagent.marathon.MarathonData.Status;
+import cn.watsonzhu.runagent.marathon.MarathonService;
+import cn.watsonzhu.runagent.marathon.MarathonService.PodiumResult;
+import cn.watsonzhu.runagent.marathon.MarathonTools;
 import cn.watsonzhu.runagent.model.RunningIntent;
 import cn.watsonzhu.runagent.model.RunningIntentType;
 import cn.watsonzhu.runagent.model.running.RunningSummary;
@@ -45,6 +51,50 @@ import reactor.test.StepVerifier;
 
 /** 用本地 StubChatModel 观察 Spring AI 的请求与回合，不依赖真实模型或 API Key。 */
 class RunAgentServiceTest {
+
+    @Test
+    void legacyAgentExecutesBothReadOnlyMarathonToolsAndIncludesThemInTheTrace() {
+        MarathonService marathons = mock(MarathonService.class);
+        when(marathons.calendar("重庆", "2026-12", "HALF_MARATHON", null, null, false))
+                .thenReturn(new CalendarResult(Status.NO_MATCH, List.of(), null, null));
+        when(marathons.podium("重庆半马", 2025, "Women", null, false, false))
+                .thenReturn(new PodiumResult(Status.NOT_CACHED, null, 2025, List.of(), "重庆半程马拉松"));
+        AtomicInteger rounds = new AtomicInteger();
+        ChatModel model = new ChatModel() {
+            @Override public ToolCallingChatOptions getOptions() {
+                return ToolCallingChatOptions.builder().build();
+            }
+
+            @Override public ChatResponse call(Prompt prompt) {
+                return switch (rounds.getAndIncrement()) {
+                    case 0 -> toolCall("query_upcoming_marathons",
+                            "{\"city\":\"重庆\",\"month\":\"2026-12\",\"distance\":\"HALF_MARATHON\"}");
+                    case 1 -> {
+                        assertThat(prompt.getInstructions().stream().filter(ToolResponseMessage.class::isInstance)
+                                .map(ToolResponseMessage.class::cast).flatMap(message -> message.getResponses().stream())
+                                .map(ToolResponseMessage.ToolResponse::responseData)).anyMatch(text -> text.contains("NO_MATCH"));
+                        yield toolCall("get_marathon_podium_results",
+                                "{\"race_name\":\"重庆半马\",\"year\":2025,\"category\":\"Women\"}");
+                    }
+                    default -> {
+                        assertThat(prompt.getInstructions().stream().filter(ToolResponseMessage.class::isInstance)
+                                .map(ToolResponseMessage.class::cast).flatMap(message -> message.getResponses().stream())
+                                .map(ToolResponseMessage.ToolResponse::responseData)).anyMatch(text -> text.contains("NOT_CACHED"));
+                        yield response("暂无已核验的成绩。");
+                    }
+                };
+            }
+        };
+        var service = new RunAgentService(ChatClient.builder(model), new PromptCatalog(resource("chat"), resource("intent")),
+                () -> new org.springframework.ai.tool.ToolCallback[0], memory(),
+                cn.watsonzhu.runagent.observability.ObservationTestSupport.noop(), Optional.of(new MarathonTools(marathons)));
+
+        var result = service.agent("race", "12月有什么重庆半马？去年重庆半马女子组前三是谁？");
+
+        assertThat(result.toolCallCount()).isEqualTo(2);
+        assertThat(result.content()).contains("暂无已核验的成绩");
+        verify(marathons).podium("重庆半马", 2025, "Women", null, false, false);
+    }
 
     @Test
     void agentExecutesThreeDynamicToolCallsAndCountsThem() {

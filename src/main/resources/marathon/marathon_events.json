@@ -1,0 +1,557 @@
+{
+  "schema_version": 1,
+  "published_at": "2026-11-21T04:00:00Z",
+  "coverage_through": "2027-01-10",
+  "series": [
+    {
+      "series_id": "beijing_marathon",
+      "name": "北京马拉松",
+      "aliases": [
+        "北马",
+        "北京国际马拉松",
+        "Beijing Marathon"
+      ],
+      "tags": [
+        "domestic_featured"
+      ],
+      "official_hosts": [
+        "www.beijing-marathon.com",
+        "www.beijing.gov.cn",
+        "tyj.beijing.gov.cn",
+        "worldathletics.org"
+      ]
+    },
+    {
+      "series_id": "berlin_marathon",
+      "name": "柏林马拉松",
+      "aliases": [
+        "柏林全马",
+        "Berlin Marathon",
+        "BMW Berlin Marathon"
+      ],
+      "tags": [
+        "major",
+        "world_athletics_label"
+      ],
+      "official_hosts": [
+        "www.generali-berlin-marathon.com",
+        "worldathletics.org"
+      ]
+    },
+    {
+      "series_id": "chongqing_half",
+      "name": "重庆半程马拉松",
+      "aliases": [
+        "重庆半马",
+        "巴南半马",
+        "重庆半程",
+        "Chongqing Half Marathon"
+      ],
+      "tags": [
+        "domestic_featured"
+      ],
+      "official_hosts": [
+        "wqw.runninginchina.org",
+        "www.runninginchina.org",
+        "www.cqbn.gov.cn",
+        "www.cq.gov.cn"
+      ]
+    },
+    {
+      "series_id": "chongqing_marathon",
+      "name": "重庆马拉松",
+      "aliases": [
+        "重马",
+        "重庆全马",
+        "重庆国际马拉松",
+        "Chongqing Marathon"
+      ],
+      "tags": [
+        "domestic_featured"
+      ],
+      "official_hosts": [
+        "www.cqmarathon.com",
+        "www.cq.gov.cn",
+        "worldathletics.org"
+      ]
+    },
+    {
+      "series_id": "guangzhou_marathon",
+      "name": "广州马拉松",
+      "aliases": [
+        "广马",
+        "广州全马",
+        "Guangzhou Marathon"
+      ],
+      "tags": [
+        "domestic_featured"
+      ],
+      "official_hosts": [
+        "www.guangzhou-marathon.com",
+        "tyj.gz.gov.cn",
+        "worldathletics.org"
+      ]
+    },
+    {
+      "series_id": "honolulu_marathon",
+      "name": "檀香山马拉松",
+      "aliases": [
+        "夏威夷马拉松",
+        "火奴鲁鲁马拉松",
+        "Honolulu Marathon",
+        "JAL Honolulu Marathon"
+      ],
+      "tags": [
+        "international_featured",
+        "world_athletics_label"
+      ],
+      "official_hosts": [
+        "www.honolulumarathon.org",
+        "worldathletics.org"
+      ]
+    },
+    {
+      "series_id": "nanjing_marathon",
+      "name": "南京马拉松",
+      "aliases": [
+        "南马",
+        "南京全马",
+        "Nanjing Marathon"
+      ],
+      "tags": [
+        "domestic_featured"
+      ],
+      "official_hosts": [
+        "sports.nanjing.gov.cn",
+        "www.nanjing.gov.cn",
+        "worldathletics.org"
+      ]
+    },
+    {
+      "series_id": "qiandaohu_marathon",
+      "name": "千岛湖马拉松",
+      "aliases": [
+        "千岛湖全马",
+        "千岛湖半马",
+        "Qiandao Lake Marathon"
+      ],
+      "tags": [
+        "domestic_featured"
+      ],
+      "official_hosts": []
+    },
+    {
+      "series_id": "sanya_marathon",
+      "name": "三亚马拉松",
+      "aliases": [
+        "海南三亚马拉松",
+        "Sanya Marathon"
+      ],
+      "tags": [],
+      "official_hosts": [
+        "www.sanya.gov.cn"
+      ]
+    },
+    {
+      "series_id": "shanghai_marathon",
+      "name": "上海马拉松",
+      "aliases": [
+        "上马",
+        "上海全马",
+        "Shanghai Marathon"
+      ],
+      "tags": [
+        "domestic_featured",
+        "world_athletics_label"
+      ],
+      "official_hosts": [
+        "www.shang-ma.com",
+        "static.shang-ma.com",
+        "www.shanghai.gov.cn",
+        "cmp.whlyj.sh.gov.cn",
+        "worldathletics.org"
+      ]
+    },
+    {
+      "series_id": "valencia_marathon",
+      "name": "瓦伦西亚马拉松",
+      "aliases": [
+        "巴伦西亚马拉松",
+        "Valencia Marathon",
+        "Maratón Valencia"
+      ],
+      "tags": [
+        "international_featured",
+        "world_athletics_label"
+      ],
+      "official_hosts": [
+        "www.valenciaciudaddelrunning.com",
+        "worldathletics.org"
+      ]
+    },
+    {
+      "series_id": "xiamen_haicang_half",
+      "name": "厦门海沧半程马拉松",
+      "aliases": [
+        "厦门海沧半马",
+        "海沧半马",
+        "Xiamen Haicang Half Marathon"
+      ],
+      "tags": [
+        "domestic_featured"
+      ],
+      "official_hosts": [
+        "www.xmhaicangmarathon.com"
+      ]
+    },
+    {
+      "series_id": "xiamen_marathon",
+      "name": "厦门马拉松",
+      "aliases": [
+        "厦马",
+        "厦门全马",
+        "Xiamen Marathon",
+        "C&D Xiamen Marathon"
+      ],
+      "tags": [
+        "domestic_featured",
+        "world_athletics_label"
+      ],
+      "official_hosts": [
+        "www.xmim.org",
+        "aims-worldrunning.org",
+        "worldathletics.org"
+      ]
+    }
+  ],
+  "events": [
+    {
+      "event_id": "chongqing_half_2025",
+      "series_id": "chongqing_half",
+      "year": 2025,
+      "race_date": "2025-12-21",
+      "timezone": "Asia/Shanghai",
+      "city": "重庆",
+      "province": null,
+      "country": "中国",
+      "distances": [
+        "HALF_MARATHON"
+      ],
+      "start_times": {},
+      "reg_deadline": null,
+      "cert_level": null,
+      "status": "COMPLETED",
+      "source": {
+        "url": "https://www.cqbn.gov.cn/zwgk_252/zfxxgkml/ggqsy/whly/ggwhty/202512/t20251222_15260498.html",
+        "organization": "重庆市巴南区人民政府",
+        "verified_at": "2026-11-21T04:00:00Z"
+      }
+    },
+    {
+      "event_id": "berlin_marathon_2026",
+      "series_id": "berlin_marathon",
+      "year": 2026,
+      "race_date": "2026-09-27",
+      "timezone": "Europe/Berlin",
+      "city": "柏林",
+      "province": null,
+      "country": "德国",
+      "distances": [
+        "MARATHON"
+      ],
+      "start_times": {},
+      "reg_deadline": null,
+      "cert_level": null,
+      "status": "COMPLETED",
+      "source": {
+        "url": "https://worldathletics.org/competition/calendar-results/results/7235580?eventId=10229634",
+        "organization": "世界田联",
+        "verified_at": "2026-11-21T04:00:00Z"
+      }
+    },
+    {
+      "event_id": "beijing_marathon_2026",
+      "series_id": "beijing_marathon",
+      "year": 2026,
+      "race_date": "2026-10-18",
+      "timezone": "Asia/Shanghai",
+      "city": "北京",
+      "province": null,
+      "country": "中国",
+      "distances": [
+        "MARATHON"
+      ],
+      "start_times": {},
+      "reg_deadline": null,
+      "cert_level": null,
+      "status": "COMPLETED",
+      "source": {
+        "url": "https://www.beijing.gov.cn/fuwu/bmfw/sy/jrts/202610/t20261019_4908193.html",
+        "organization": "北京市人民政府",
+        "verified_at": "2026-11-21T04:00:00Z"
+      }
+    },
+    {
+      "event_id": "nanjing_marathon_2026",
+      "series_id": "nanjing_marathon",
+      "year": 2026,
+      "race_date": "2026-11-22",
+      "timezone": "Asia/Shanghai",
+      "city": "南京",
+      "province": "江苏",
+      "country": "中国",
+      "distances": [
+        "MARATHON"
+      ],
+      "start_times": {
+        "MARATHON": "07:30"
+      },
+      "reg_deadline": null,
+      "cert_level": null,
+      "status": "CONFIRMED",
+      "source": {
+        "url": "https://www.nanjing.gov.cn/zzb/hdhy/hygq_72666/202611/t20261120_6044981.html",
+        "organization": "南京市人民政府",
+        "verified_at": "2026-11-21T04:00:00Z"
+      }
+    },
+    {
+      "event_id": "qiandaohu_marathon_2026",
+      "series_id": "qiandaohu_marathon",
+      "year": 2026,
+      "race_date": "2026-11-29",
+      "timezone": "Asia/Shanghai",
+      "city": "杭州",
+      "province": "浙江",
+      "country": "中国",
+      "distances": [
+        "MARATHON",
+        "HALF_MARATHON"
+      ],
+      "start_times": {
+        "MARATHON": "07:30",
+        "HALF_MARATHON": "07:30"
+      },
+      "reg_deadline": "2026-10-10",
+      "cert_level": null,
+      "status": "CONFIRMED",
+      "source": {
+        "url": "https://www.qdhnews.com.cn/news/content/2026-09/02/content_9926295.html",
+        "organization": "淳安县融媒体中心",
+        "verified_at": "2026-11-21T04:00:00Z"
+      }
+    },
+    {
+      "event_id": "shanghai_marathon_2026",
+      "series_id": "shanghai_marathon",
+      "year": 2026,
+      "race_date": "2026-12-06",
+      "timezone": "Asia/Shanghai",
+      "city": "上海",
+      "province": null,
+      "country": "中国",
+      "distances": [
+        "MARATHON"
+      ],
+      "start_times": {
+        "MARATHON": "07:00"
+      },
+      "reg_deadline": "2026-05-29",
+      "cert_level": null,
+      "status": "CONFIRMED",
+      "source": {
+        "url": "https://cmp.whlyj.sh.gov.cn/CMP/news_view.ac?id=46d8f83ba8ff4659b9f68dcd054a7805",
+        "organization": "上海市文化和旅游局",
+        "verified_at": "2026-11-21T04:00:00Z"
+      }
+    },
+    {
+      "event_id": "valencia_marathon_2026",
+      "series_id": "valencia_marathon",
+      "year": 2026,
+      "race_date": "2026-12-06",
+      "timezone": "Europe/Madrid",
+      "city": "瓦伦西亚",
+      "province": null,
+      "country": "西班牙",
+      "distances": [
+        "MARATHON"
+      ],
+      "start_times": {
+        "MARATHON": "08:15"
+      },
+      "reg_deadline": null,
+      "cert_level": null,
+      "status": "CONFIRMED",
+      "source": {
+        "url": "https://www.valenciaciudaddelrunning.com/en/services-runners-last-instructions/",
+        "organization": "瓦伦西亚马拉松组委会",
+        "verified_at": "2026-11-21T04:00:00Z"
+      }
+    },
+    {
+      "event_id": "xiamen_haicang_half_2026",
+      "series_id": "xiamen_haicang_half",
+      "year": 2026,
+      "race_date": "2026-12-06",
+      "timezone": "Asia/Shanghai",
+      "city": "厦门",
+      "province": "福建",
+      "country": "中国",
+      "distances": [
+        "HALF_MARATHON"
+      ],
+      "start_times": {
+        "HALF_MARATHON": "07:00"
+      },
+      "reg_deadline": "2026-10-08",
+      "cert_level": null,
+      "status": "PLANNED",
+      "source": {
+        "url": "https://chinamarathon.com/events/80430",
+        "organization": "中国马拉松赛历",
+        "verified_at": "2026-11-21T04:00:00Z"
+      }
+    },
+    {
+      "event_id": "honolulu_marathon_2026",
+      "series_id": "honolulu_marathon",
+      "year": 2026,
+      "race_date": "2026-12-13",
+      "timezone": "Pacific/Honolulu",
+      "city": "檀香山",
+      "province": "夏威夷州",
+      "country": "美国",
+      "distances": [
+        "MARATHON"
+      ],
+      "start_times": {
+        "MARATHON": "05:00"
+      },
+      "reg_deadline": null,
+      "cert_level": null,
+      "status": "CONFIRMED",
+      "source": {
+        "url": "https://www.honolulumarathon.org/key-information/getting-to-the-start",
+        "organization": "檀香山马拉松组委会",
+        "verified_at": "2026-11-21T04:00:00Z"
+      }
+    },
+    {
+      "event_id": "guangzhou_marathon_2026",
+      "series_id": "guangzhou_marathon",
+      "year": 2026,
+      "race_date": "2026-12-20",
+      "timezone": "Asia/Shanghai",
+      "city": "广州",
+      "province": "广东",
+      "country": "中国",
+      "distances": [
+        "MARATHON"
+      ],
+      "start_times": {
+        "MARATHON": "07:00"
+      },
+      "reg_deadline": "2026-09-11",
+      "cert_level": null,
+      "status": "CONFIRMED",
+      "source": {
+        "url": "https://tyj.gz.gov.cn/sshd/sshdyg/content/post_10989209.html",
+        "organization": "广州市体育局",
+        "verified_at": "2026-11-21T04:00:00Z"
+      }
+    },
+    {
+      "event_id": "chongqing_half_2026",
+      "series_id": "chongqing_half",
+      "year": 2026,
+      "race_date": "2026-12-27",
+      "timezone": "Asia/Shanghai",
+      "city": "重庆",
+      "province": null,
+      "country": "中国",
+      "distances": [
+        "HALF_MARATHON"
+      ],
+      "start_times": {
+        "HALF_MARATHON": "09:00"
+      },
+      "reg_deadline": "2026-09-24",
+      "cert_level": null,
+      "status": "CONFIRMED",
+      "source": {
+        "url": "https://www.runninginchina.org/event/default/3086.html?action=view",
+        "organization": "重庆半程马拉松组委会",
+        "verified_at": "2026-11-21T04:00:00Z"
+      }
+    },
+    {
+      "event_id": "sanya_marathon_2026",
+      "series_id": "sanya_marathon",
+      "year": 2026,
+      "race_date": "2026-12-27",
+      "timezone": "Asia/Shanghai",
+      "city": "三亚",
+      "province": "海南",
+      "country": "中国",
+      "distances": [
+        "MARATHON"
+      ],
+      "start_times": {},
+      "reg_deadline": null,
+      "cert_level": null,
+      "status": "PLANNED",
+      "source": {
+        "url": "https://chinamarathon.com/events/46298",
+        "organization": "中国马拉松赛历",
+        "verified_at": "2026-11-21T04:00:00Z"
+      }
+    },
+    {
+      "event_id": "chongqing_marathon_2027",
+      "series_id": "chongqing_marathon",
+      "year": 2027,
+      "race_date": "2027-01-10",
+      "timezone": "Asia/Shanghai",
+      "city": "重庆",
+      "province": null,
+      "country": "中国",
+      "distances": [
+        "MARATHON"
+      ],
+      "start_times": {
+        "MARATHON": "08:00"
+      },
+      "reg_deadline": null,
+      "cert_level": null,
+      "status": "CONFIRMED",
+      "source": {
+        "url": "https://www.cqmarathon.com/News/Detail/21070C87897D1015",
+        "organization": "重庆马拉松组委会",
+        "verified_at": "2026-11-21T04:00:00Z"
+      }
+    },
+    {
+      "event_id": "xiamen_marathon_2027",
+      "series_id": "xiamen_marathon",
+      "year": 2027,
+      "race_date": "2027-01-10",
+      "timezone": "Asia/Shanghai",
+      "city": "厦门",
+      "province": "福建",
+      "country": "中国",
+      "distances": [
+        "MARATHON"
+      ],
+      "start_times": {},
+      "reg_deadline": null,
+      "cert_level": "World Athletics Platinum Label",
+      "status": "CONFIRMED",
+      "source": {
+        "url": "https://worldathletics.org/competition/calendar-results?competitionGroupId=3775&isSearchReset=true",
+        "organization": "世界田联",
+        "verified_at": "2026-11-21T04:00:00Z"
+      }
+    }
+  ]
+}

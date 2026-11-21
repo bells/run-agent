@@ -2,16 +2,23 @@ package cn.watsonzhu.runagent.agent;
 
 import java.time.Duration;
 import cn.watsonzhu.runagent.observability.RunAgentObservation;
+import java.util.Arrays;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 import cn.watsonzhu.runagent.exception.AiRequestException;
 import cn.watsonzhu.runagent.exception.AgentLimitException;
 import cn.watsonzhu.runagent.exception.StructuredOutputException;
+import cn.watsonzhu.runagent.marathon.MarathonTools;
 import cn.watsonzhu.runagent.model.RunningIntent;
 import cn.watsonzhu.runagent.model.AgentResponse;
 import cn.watsonzhu.runagent.prompt.PromptCatalog;
+import org.springframework.ai.support.ToolCallbacks;
+import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.ToolCallbackProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,16 +43,25 @@ public class RunAgentService {
     private final ChatClient chatClient;
     private final PromptCatalog prompts;
     private final ToolCallbackProvider tools;
+    private final ToolCallback[] marathonTools;
     private final ChatMemory chatMemory;
     private final MessageChatMemoryAdvisor memoryAdvisor;
 
     public RunAgentService(ChatClient.Builder chatClientBuilder, PromptCatalog prompts,
                            @Qualifier("agentTools") ToolCallbackProvider tools,
                            ChatMemory chatMemory, RunAgentObservation observations) {
+        this(chatClientBuilder, prompts, tools, chatMemory, observations, Optional.empty());
+    }
+
+    @Autowired
+    public RunAgentService(ChatClient.Builder chatClientBuilder, PromptCatalog prompts,
+                           @Qualifier("agentTools") ToolCallbackProvider tools,
+                           ChatMemory chatMemory, RunAgentObservation observations, Optional<MarathonTools> marathons) {
         this.observations = observations;
         this.chatClient = chatClientBuilder.build();
         this.prompts = prompts;
         this.tools = tools;
+        this.marathonTools = marathons.map(ToolCallbacks::from).orElseGet(() -> new ToolCallback[0]);
         this.chatMemory = chatMemory;
         this.memoryAdvisor = MessageChatMemoryAdvisor.builder(chatMemory).build();
     }
@@ -109,15 +125,17 @@ public class RunAgentService {
             int memoryMessagesBefore = chatMemory.get(conversationId).size();
             log.info("conversationId={} agentExecutionId={} phase=STARTED memoryMessagesBefore={}",
                     conversationId, trace.executionId(), memoryMessagesBefore);
+            ToolCallback[] agentTools = Stream.concat(Arrays.stream(tools.getToolCallbacks()), Arrays.stream(marathonTools))
+                    .toArray(ToolCallback[]::new);
             // Agent 需要完整响应的 finishReason，以识别框架转换后的 Tool 超限结果；content() 会丢掉该元数据。
             ChatResponse response = chatClient.prompt()
                     .system(prompts.agentSystemPrompt() + "\nAvailable tools for this session: "
-                            + java.util.Arrays.stream(tools.getToolCallbacks()).map(t -> t.getToolDefinition().name()).toList()
+                            + Arrays.stream(agentTools).map(t -> t.getToolDefinition().name()).toList()
                             + ". If the required tool is absent, clearly state that the data is unavailable.")
                     .user(message)
                     .advisors(memoryAdvisor)
                     .advisors(advisors -> advisors.param(ChatMemory.CONVERSATION_ID, conversationId))
-                    .tools(tools)
+                    .tools((ToolCallbackProvider) () -> agentTools)
                     // 同一请求的 Tool 调用共享 trace，计数与 executionId 不依赖线程局部或全局状态。
                     .toolContext(Map.of(AgentExecutionTrace.CONTEXT_KEY, trace))
                     .call()

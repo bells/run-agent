@@ -53,5 +53,6 @@ Watson Running「我的训练」及 RunAgent 内部分析入口
 
 - [发布、回滚与同机 MCP 运维](deploy/README.md)
 - [MCP 工具发现与白名单](docs/mcp.md) · [训练分析工作流](docs/workflow.md) · [多 Agent 编排](docs/multi-agent.md)
+- [赛事日历、官方领奖台与成绩缓存](docs/marathon.md)
 - [离线评估](docs/evaluation.md) · [可观测性](docs/observability.md) · [成本与预算](docs/performance.md) · [故障治理](docs/reliability.md)
 - [v0.11 README 归档](README.v0.11.md)，保留技术演进、各阶段配置和 API 示例。

@@ -56,6 +56,9 @@ run-agent:
   private-chat:
     enabled: ${RUN_AGENT_PRIVATE_CHAT_ENABLED:false}
     token: ${RUN_AGENT_PRIVATE_CHAT_TOKEN:}
+  conversations:
+    enabled: ${RUN_AGENT_CONVERSATIONS_ENABLED:false}
+    directory: ${RUN_AGENT_CONVERSATIONS_DIR:.run-agent/conversations}
   public-api:
     enabled: ${RUN_AGENT_PUBLIC_API_ENABLED:false}
     chat-daily-limit: ${RUN_AGENT_PUBLIC_CHAT_DAILY_LIMIT:40}

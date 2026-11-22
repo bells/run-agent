@@ -90,3 +90,9 @@ ssh -N -L 127.0.0.1:18081:127.0.0.1:18080 run-agent-hk
 预先用与服务器相同的 Embedding 模型、端点身份和分块配置构建索引。启动前确认 Embedding 服务已加载模型，核查主机内存。应用启动后确认 RAG 输出 `LOADED`，MCP 发现日志包含 `running` 与 `weather`，再配合同源前端检查公开入口。用一条包含城市与时段的问答确认预报时段和书籍来源，随后核对公开统计和指定活动的生成及回看。个人令牌继续访问原数据范围。模型额度与报告存储按访问权限独立处理。
 
 在 GitHub 仓库将 `RUN_AGENT_PUBLIC_API_ENABLED` Actions 变量设为 `true` 后，定时 smoke 检查匿名统计和匿名聊天参数校验。探针发送无效的聊天请求来验证路由，避免触发模型调用。
+
+### 历史对话
+
+先部署支持访客 `history` 字段的 RunAgent，并把新版 `Caddyfile.example` 的会话路由同步到实际 Caddy 配置。在站主私有环境文件启用 `RUN_AGENT_CONVERSATIONS_ENABLED=true`，保留现有站主令牌。SQLite 数据在 `run-conversations` 卷，通过 `RUN_AGENT_CONVERSATIONS_DIR` 指向容器内目录。当前部署由一个 RunAgent 实例管理此卷。
+
+验证站主请求可创建、查看和删除会话，未带令牌的请求返回 401。再用 `VITE_RUN_AGENT_CHAT_HISTORY=true` 构建前端。回滚时先移除前端开关，SQLite 卷可保留供恢复使用。备份需要按私有数据管理。

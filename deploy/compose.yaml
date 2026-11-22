@@ -23,10 +23,12 @@ services:
       RUNNING_TOOL_PROVIDER: local
       RUNNING_DATA_PATH: /data/activities.json
       RUN_AGENT_MARATHON_SNAPSHOT: /marathon-data/marathon_events.json
+      RUN_AGENT_CONVERSATIONS_DIR: /var/lib/run-agent/conversations
       RUN_AGENT_MARATHON_PODIUM_DIR: /var/lib/run-agent/marathon-podiums
     ports:
       - "127.0.0.1:18080:8080"
     volumes:
+      - run-conversations:/var/lib/run-agent/conversations
       - run-marathon-podiums:/var/lib/run-agent/marathon-podiums
       - type: bind
         source: ${RUN_AGENT_MARATHON_DATA_DIR:-./marathon-data}
@@ -53,4 +55,5 @@ services:
         max-file: "3"
 
 volumes:
+  run-conversations:
   run-marathon-podiums:

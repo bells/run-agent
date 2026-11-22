@@ -4,6 +4,7 @@ services:
     ports: !reset []
     volumes: !override
       - run-reviews:/var/lib/run-agent/reviews
+      - run-conversations:/var/lib/run-agent/conversations
       - run-marathon-podiums:/var/lib/run-agent/marathon-podiums
       - type: bind
         source: ${RUN_AGENT_MARATHON_DATA_DIR:-./marathon-data}

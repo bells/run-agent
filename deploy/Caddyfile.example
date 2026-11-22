@@ -5,6 +5,16 @@ run-api.watsonzhu.cn {
 	}
 	handle @privateApi {
 		request_body {
+			max_size 64KB
+		}
+		reverse_proxy 127.0.0.1:18080
+	}
+	@conversation {
+		method GET POST DELETE
+		path_regexp conversation ^/api/v1/conversations(/[0-9a-f-]{36}(/turns)?)?$
+	}
+	handle @conversation {
+		request_body {
 			max_size 32KB
 		}
 		reverse_proxy 127.0.0.1:18080

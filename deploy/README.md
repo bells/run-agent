@@ -93,6 +93,6 @@ ssh -N -L 127.0.0.1:18081:127.0.0.1:18080 run-agent-hk
 
 ### 历史对话
 
-先部署支持访客 `history` 字段的 RunAgent，并把新版 `Caddyfile.example` 的会话路由同步到实际 Caddy 配置。在站主私有环境文件启用 `RUN_AGENT_CONVERSATIONS_ENABLED=true`，保留现有站主令牌。SQLite 数据在 `run-conversations` 卷，通过 `RUN_AGENT_CONVERSATIONS_DIR` 指向容器内目录。当前部署由一个 RunAgent 实例管理此卷。
+先部署支持访客 `history` 字段的 RunAgent，并把新版 `Caddyfile.example` 的会话路由同步到实际 Caddy 配置。在站主私有环境文件启用 `RUN_AGENT_CONVERSATIONS_ENABLED=true`，保留现有站主令牌。SQLite 数据在 `run-conversations` 卷，通过 `RUN_AGENT_CONVERSATIONS_DIR` 指向容器内目录。当前部署由一个 RunAgent 实例管理此卷。 SQLite JDBC 在容器的 `/run/run-agent-sqlite` 私有临时挂载中加载原生库，普通 `/tmp` 继续禁止执行。
 
 验证站主请求可创建、查看和删除会话，未带令牌的请求返回 401。再用 `VITE_RUN_AGENT_CHAT_HISTORY=true` 构建前端。回滚时先移除前端开关，SQLite 卷可保留供恢复使用。备份需要按私有数据管理。

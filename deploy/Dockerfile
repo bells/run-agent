@@ -5,4 +5,4 @@ ARG APP_JAR=run-agent.jar
 COPY --chmod=0444 ${APP_JAR} /app/run-agent.jar
 RUN install -d -m 0700 -o 10001 -g 10001 /var/lib/run-agent/reviews /var/lib/run-agent/marathon-podiums /var/lib/run-agent/conversations
 USER 10001:10001
-ENTRYPOINT ["java", "-XX:MaxRAMPercentage=50", "-jar", "/app/run-agent.jar"]
+ENTRYPOINT ["java", "-XX:MaxRAMPercentage=50", "-Dorg.sqlite.tmpdir=/run/run-agent-sqlite", "-jar", "/app/run-agent.jar"]

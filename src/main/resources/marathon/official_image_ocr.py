@@ -31,19 +31,38 @@ def scan(image, ratio, language, segmentation, padding=0):
         yield x, y, height, row["conf"], row["text"]
 
 
-def podium_words(image, domestic):
+def relative_box(image, bounds):
     width, height = image.size
-    bounds = (1680, 625, 2180, 1230) if domestic else (1200, 575, 2580, 1250)
-    left, top, right, bottom = (round(bounds[0] * width / 3542), round(bounds[1] * height / 1290),
-                                round(bounds[2] * width / 3542), round(bounds[3] * height / 1290))
-    # Rank and gun time are read from the complete table. A separate pass keeps the
-    # Latin model from mistaking short Chinese names for English words.
+    left, top, right, bottom = bounds
+    return round(left * width / 3542), round(top * height / 1290), \
+        round(right * width / 3542), round(bottom * height / 1290)
+
+
+def podium_words(image, domestic):
+    width = image.width
+    name_bounds = (1680, 625, 2180, 1230) if domestic else (1200, 575, 2580, 1250)
+    names_box = relative_box(image, name_bounds)
+    headers = [relative_box(image, bounds) for bounds in ((135, 393, 435, 585), (1715, 393, 2100, 585))]
     for x, y, size, confidence, text in scan(image, 0.4, "chi_sim+eng", "11"):
-        if y < top or not 0.30 <= x / width < 0.73:
+        position = x / width
+        name_column = 0.30 <= position < 0.73
+        header = headers[0][1] <= y < headers[0][3]
+        if header and (position < 0.15 or name_column):
+            continue
+        if y < names_box[1] or not name_column:
             yield x, y, size, confidence, text
-    names = image.crop((left, top, right, bottom))
-    name_scan = scan(names, 0.33, "chi_sim", "11", padding=12) if domestic else scan(names, 0.4, "chi_sim+eng", "6")
-    for x, y, size, confidence, text in name_scan:
+
+    # Tesseract 4 can miss light text in these two header cells unless the background is inverted.
+    for box in headers:
+        panel = image.crop(box)
+        if panel.getpixel((0, 0)) < 128:
+            panel = ImageOps.invert(panel)
+        for x, y, size, confidence, text in scan(panel, 0.45, "chi_sim", "7", padding=12):
+            yield x + box[0], y + box[1], size, confidence, text
+
+    left, top, _, _ = names_box
+    names = image.crop(names_box)
+    for x, y, size, confidence, text in scan(names, 0.33, "chi_sim", "11", padding=12):
         yield x + left, y + top, size, confidence, text
 
 

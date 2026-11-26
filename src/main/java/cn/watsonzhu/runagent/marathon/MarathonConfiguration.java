@@ -35,12 +35,17 @@ class MarathonConfiguration {
     }
 
     @Bean
-    MarathonChat marathonChat(MarathonService service) {
-        return new MarathonChat(service, Clock.systemUTC());
+    MarathonSub3 marathonSub3(ObjectMapper json, @Value("${run-agent.marathon.sub-three-snapshot:}") String path) {
+        return new MarathonSub3(json, path.isBlank() ? null : Path.of(path), Clock.systemUTC());
     }
 
     @Bean
-    MarathonTools marathonTools(MarathonService service) {
-        return new MarathonTools(service);
+    MarathonChat marathonChat(MarathonService service, MarathonSub3 subThree) {
+        return new MarathonChat(service, Clock.systemUTC(), subThree);
+    }
+
+    @Bean
+    MarathonTools marathonTools(MarathonService service, MarathonSub3 subThree) {
+        return new MarathonTools(service, subThree);
     }
 }

@@ -18,10 +18,17 @@ public final class MarathonTools {
     private static final Logger log = LoggerFactory.getLogger(MarathonTools.class);
     private static final String CALENDAR = "query_upcoming_marathons";
     private static final String PODIUM = "get_marathon_podium_results";
+    private static final String SUB_THREE = "get_marathon_sub_three_counts";
     private final MarathonService service;
+    private final MarathonSub3 subThree;
 
     public MarathonTools(MarathonService service) {
+        this(service, null);
+    }
+
+    public MarathonTools(MarathonService service, MarathonSub3 subThree) {
         this.service = service;
+        this.subThree = subThree;
     }
 
     @Tool(name = CALENDAR, description = "Look up upcoming marathon or half marathon dates, start times, "
@@ -48,6 +55,17 @@ public final class MarathonTools {
             @ToolParam(required = false, description = "MARATHON or HALF_MARATHON") String distance,
             ToolContext context) {
         return execute(PODIUM, context, () -> service.podium(race_name, year, category, distance, false, false));
+    }
+
+    @Tool(name = SUB_THREE, description = "Read the local annual sub-three-hour net-time counts for mainland Chinese "
+            + "CAA A/B full marathons. Only verified counts are ranked. Disclosed counts have unconfirmed methodology.")
+    public MarathonSub3.Query subThree(
+            @ToolParam(required = false, description = "Calendar year, defaults to the current year") Integer year,
+            @ToolParam(required = false, description = "Official race name or known alias") String race_name,
+            @ToolParam(required = false, description = "Maximum rows, 1 to 30, default 10") Integer limit,
+            ToolContext context) {
+        return execute(SUB_THREE, context, () -> subThree == null
+                ? MarathonSub3.unavailable(year) : subThree.query(year, race_name, limit));
     }
 
     private static <T> T execute(String tool, ToolContext context, Supplier<T> action) {

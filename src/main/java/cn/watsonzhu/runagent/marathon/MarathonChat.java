@@ -94,16 +94,44 @@ public final class MarathonChat {
                     + "|(?:比赛|起跑|开跑|赛日)" + FACT_GAP + "{0,14}(?:气温|体感|天气|风速|降水概率)\\s*"
                     + "(?:预计|为|是|约)\\s*[-+]?\\d");
 
+    private static final Pattern SUB_THREE = Pattern.compile("破\\s*(?:三|3)|sub[ -]?3");
+    private static final Pattern SUB_THREE_STATS = Pattern.compile(
+            "人数|多少人|几人|多少名|几名|有多少|排行|榜|最多|前[一二三四五六七八九十0-9]");
+    private static final Pattern SUB_THREE_LIST = Pattern.compile("排行|榜|最多|前[一二三四五六七八九十0-9]|哪些|哪几场");
+    private static final Pattern SUB_THREE_AREA = Pattern.compile("中国|国内|全国|年度|汇总|各赛事");
+    private static final Pattern SUB_THREE_YEAR = Pattern.compile("(?<![0-9])([0-9]{2})年");
+    private static final Pattern SUB_THREE_UNSUPPORTED = Pattern.compile("半马|半程|海外|国外|港澳台|全球");
+
     private final MarathonService marathons;
+    private final MarathonSub3 subThree;
     private final Clock clock;
 
     public MarathonChat(MarathonService marathons, Clock clock) {
+        this(marathons, clock, null);
+    }
+
+    public MarathonChat(MarathonService marathons, Clock clock, MarathonSub3 subThree) {
         this.marathons = marathons;
         this.clock = clock;
+        this.subThree = subThree;
     }
 
     public Optional<Reply> query(String message, AdviceContext context, boolean owner) {
         String text = Normalizer.normalize(message, Normalizer.Form.NFKC).toLowerCase(Locale.ROOT);
+        if (subThree != null && matches(SUB_THREE, text) && matches(SUB_THREE_STATS, text)) {
+            if (matches(SUB_THREE_UNSUPPORTED, text)) {
+                return Optional.of(Reply.facts("当前破三统计覆盖中国大陆田协 A/B 类全程马拉松。"));
+            }
+            LocalDate current = LocalDate.now(clock.withZone(CHINA));
+            Integer requestedYear = year(text, current);
+            if (requestedYear == null) {
+                var shortYear = SUB_THREE_YEAR.matcher(text);
+                if (shortYear.find()) requestedYear = 2000 + Integer.parseInt(shortYear.group(1));
+            }
+            int rankingYear = requestedYear == null ? current.getYear() : requestedYear;
+            boolean leaderboard = matches(SUB_THREE_LIST, text) || matches(SUB_THREE_AREA, text);
+            return Optional.of(Reply.facts(subThree.answer(rankingYear, text, leaderboard)));
+        }
         boolean weather = matches(WEATHER, text);
         boolean advice = matches(ADVICE, text);
         boolean officialPodium = matches(OFFICIAL_PODIUM, text) && (!advice || matches(PODIUM_QUESTION, text));

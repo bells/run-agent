@@ -24,3 +24,6 @@ src/main/resources/application-local.yml
 
 # Private knowledge sources, extracted text, chunks and vector stores
 .run-agent/
+
+# Local publication previews
+/output/drafts/

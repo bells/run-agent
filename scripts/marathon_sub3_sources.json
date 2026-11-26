@@ -1,0 +1,51 @@
+{
+  "year": 2026,
+  "catalog_coverage": "PARTIAL",
+  "catalog_source": "https://file.shuzixindong.com/changzheng/84554/fddbe29f6e434035918201d2a17dbcac.pdf",
+  "events": [
+    {
+      "event_id": "wuxi_marathon_2026",
+      "name": "无锡马拉松",
+      "race_date": "2026-03-22",
+      "country": "CN",
+      "province": "江苏",
+      "cert_level": "A",
+      "distance": "MARATHON",
+      "state": "COMPLETED",
+      "edition_source": "https://www.wuxi.gov.cn/doc/2026/03/22/4749314.shtml",
+      "announcement": {
+        "url": "https://www.wuxi.gov.cn/doc/2026/03/22/4749314.shtml",
+        "title": "来自无锡马拉松组委会的感谢信",
+        "pattern": "托举下,(?P<count>[0-9,]+)位选手成功[“\"]破三[”\"]"
+      },
+      "directory_row": 104,
+      "aliases": [
+        "锡马"
+      ]
+    },
+    {
+      "event_id": "nanjing_marathon_2026",
+      "name": "南京马拉松",
+      "race_date": "2026-11-22",
+      "country": "CN",
+      "province": "江苏",
+      "cert_level": "A",
+      "distance": "MARATHON",
+      "state": "COMPLETED",
+      "edition_source": "https://sports.nanjing.gov.cn/gzdt/202611/t20261123_6046199.html",
+      "announcement": {
+        "url": "https://sports.nanjing.gov.cn/gzdt/202611/t20261123_6046199.html",
+        "title": "2026南京马拉松鸣枪起跑",
+        "pattern": "[“\"]破三[”\"]人数达(?P<count>[0-9,]+)人"
+      },
+      "directory_row": 128,
+      "aliases": [
+        "南马"
+      ]
+    }
+  ],
+  "directory": {
+    "expected_rows": 492,
+    "sha256": "52633a1251d85324eb269872fdcfca3e3682aa8902f7c9565fb08384ec05128a"
+  }
+}

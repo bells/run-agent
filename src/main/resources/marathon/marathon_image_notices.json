@@ -1,0 +1,31 @@
+[
+  {
+    "eventId": "nanjing_marathon_2026",
+    "raceDate": "2026-11-22",
+    "distance": "MARATHON",
+    "page": "https://nanjing.marathon.org.cn/post-a89zZAEjBQXMDqRYb52J.html",
+    "organization": "南京马拉松组委会",
+    "attachments": [
+      {
+        "url": "https://stor.ihuipao.com/image/7b80853779610160dbc7178cc7747aef.png",
+        "sha256": "0c46899356740c192aa2f6613aef82c66e7279cf6963da1b954d4e00c51d93fb",
+        "width": 3542,
+        "height": 12500,
+        "boards": [
+          { "category": "MEN", "subCategory": "OVERALL", "top": 620, "height": 1290 },
+          { "category": "WOMEN", "subCategory": "OVERALL", "top": 5780, "height": 1290 }
+        ]
+      },
+      {
+        "url": "https://stor.ihuipao.com/image/641e37aa2dbe5488c04d70b31766fc9a.png",
+        "sha256": "35d3ed48f4be2faa9907a70ad41e6c0b22c79e4a60a65ee83dcb3e2de0425ae9",
+        "width": 3542,
+        "height": 4792,
+        "boards": [
+          { "category": "MEN", "subCategory": "DOMESTIC", "top": 620, "height": 1290 },
+          { "category": "WOMEN", "subCategory": "DOMESTIC", "top": 1880, "height": 1290 }
+        ]
+      }
+    ]
+  }
+]

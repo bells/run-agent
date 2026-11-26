@@ -12,6 +12,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Pattern;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import tools.jackson.databind.PropertyNamingStrategies;
 import tools.jackson.databind.annotation.JsonNaming;
 
@@ -82,13 +83,24 @@ public final class MarathonData {
     }
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public record Source(String url, String organization, Instant verifiedAt) {
+    public record Source(String url, String organization, Instant verifiedAt,
+                         @JsonInclude(JsonInclude.Include.NON_NULL) String imageUrl) {
+        public Source(String url, String organization, Instant verifiedAt) {
+            this(url, organization, verifiedAt, null);
+        }
+
         public Source {
-            requireText(url, 2048);
             requireText(organization, 160);
+            requireSourceUrl(url);
+            if (imageUrl != null) requireSourceUrl(imageUrl);
+            if (verifiedAt == null) throw new IllegalArgumentException("Missing marathon source verification");
+        }
+
+        private static void requireSourceUrl(String url) {
+            requireText(url, 2048);
             URI uri = URI.create(url);
             if (!"https".equals(uri.getScheme()) || uri.getHost() == null || uri.getUserInfo() != null
-                    || uri.getPort() != -1 && uri.getPort() != 443 || verifiedAt == null) {
+                    || uri.getPort() != -1 && uri.getPort() != 443) {
                 throw new IllegalArgumentException("Invalid marathon source");
             }
         }

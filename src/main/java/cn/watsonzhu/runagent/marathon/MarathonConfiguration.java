@@ -27,10 +27,9 @@ class MarathonConfiguration {
         if (lookupEnabled) {
             if (tavilyApiKey.isBlank()) {
                 LoggerFactory.getLogger(MarathonConfiguration.class)
-                        .warn("marathon_podium_lookup status=DISABLED_MISSING_CONFIGURATION");
-            } else {
-                lookup = new OfficialMarathonResultLookup(tavilyApiKey.strip(), json, model, observations, clock);
+                        .warn("marathon_podium_lookup status=SEARCH_DISABLED_MISSING_KEY");
             }
+            lookup = new OfficialMarathonResultLookup(tavilyApiKey.strip(), json, model, observations, clock);
         }
         return new MarathonService(calendar, new MarathonPodiumStore(json, podiumDirectory), lookup, clock);
     }

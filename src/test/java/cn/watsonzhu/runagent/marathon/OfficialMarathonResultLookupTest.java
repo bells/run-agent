@@ -1,27 +1,37 @@
 package cn.watsonzhu.runagent.marathon;
 
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
 import java.net.URI;
+import java.security.MessageDigest;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import javax.imageio.ImageIO;
+
 import io.micrometer.observation.ObservationRegistry;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
+import org.springframework.core.io.buffer.DefaultDataBufferFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.web.reactive.function.client.ClientResponse;
 import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -288,6 +298,67 @@ class OfficialMarathonResultLookupTest {
         assertThat(lookup.lookup(SERIES, event(), 2025, Distance.MARATHON,
                 System.nanoTime() + TimeUnit.SECONDS.toNanos(1))).isEmpty();
         assertThat(cancelled).isTrue();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"verified", "changed-image", "chip-time", "bad-row"})
+    void readsOnlyVerifiedGunTimeRowsFromRegisteredOfficialImage(String caseName) throws Exception {
+        var bytes = new ByteArrayOutputStream();
+        ImageIO.write(new BufferedImage(1000, 600, BufferedImage.TYPE_INT_RGB), "png", bytes);
+        String sha256 = caseName.equals("changed-image") ? "0".repeat(64)
+                : HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes.toByteArray()));
+        URI noticePage = URI.create("https://official.example/podium-notice");
+        URI attachment = URI.create("https://cdn.example/image/verified.png");
+        var board = new OfficialMarathonImageNotice.Board(Category.MEN, SubCategory.DOMESTIC, 0, 600);
+        var notice = new OfficialMarathonImageNotice.Notice("sample_2025", RACE_DATE, Distance.MARATHON,
+                noticePage, "Sample Organizer", List.of(
+                new OfficialMarathonImageNotice.Attachment(attachment, sha256, 1000, 600, List.of(board))));
+        var imageNotice = new OfficialMarathonImageNotice(List.of(notice), (image, subgroup, deadline) -> List.of(
+                word(75, 110, "名次"), word(500, 110, "姓名"),
+                word(850, 110, caseName.equals("chip-time") ? "净计时成绩" : "枪声成绩"),
+                word(75, 180, "1"), word(500, 180, "张勇"), word(850, 180, "02:12:35"),
+                word(75, 240, "2"), word(500, 242, "王东"), word(850, 237, "02:13:48"),
+                word(75, 310, "3"), word(500, 306, "李成"),
+                word(850, 311, caseName.equals("bad-row") ? "02:14:95" : "02:14:55"),
+                word(75, 400, "4"), word(500, 402, "刘力"), word(850, 401, "02:15:03")));
+        var fetched = new ArrayList<URI>();
+        var client = WebClient.builder().exchangeFunction(request -> {
+            var url = request.url();
+            fetched.add(url);
+            if (url.equals(noticePage)) {
+                return Mono.just(ClientResponse.create(HttpStatus.OK).header(HttpHeaders.CONTENT_TYPE, "text/html")
+                        .body(page("成绩公示", "<img src='https://untrusted.example/other.png'>"
+                                + "<img src='//cdn.example/image/verified.png'>"))
+                        .build());
+            }
+            assertThat(url).isEqualTo(attachment);
+            assertThat(request.headers().getFirst(HttpHeaders.REFERER)).isEqualTo(noticePage.toString());
+            assertThat(request.headers().getFirst(HttpHeaders.AUTHORIZATION)).isNull();
+            return Mono.just(ClientResponse.create(HttpStatus.OK).header(HttpHeaders.CONTENT_TYPE, "image/png")
+                    .body(Flux.just(DefaultDataBufferFactory.sharedInstance.wrap(bytes.toByteArray()))).build());
+        }).build();
+        var lookup = new OfficialMarathonResultLookup("", JsonMapper.builder().build(), unexpectedModel(),
+                ObservationRegistry.NOOP, CLOCK, client, imageNotice);
+
+        var result = lookup.lookup(SERIES, event(), 2025, Distance.MARATHON, deadline());
+
+        assertThat(fetched).containsExactly(noticePage, attachment);
+        if (!caseName.equals("verified")) {
+            assertThat(result).isEmpty();
+            return;
+        }
+        assertThat(result.orElseThrow().groups()).singleElement().satisfies(group -> {
+            assertThat(group.category()).isEqualTo(Category.MEN);
+            assertThat(group.subCategory()).isEqualTo(SubCategory.DOMESTIC);
+            assertThat(group.source().url()).isEqualTo(noticePage.toString());
+            assertThat(group.source().imageUrl()).isEqualTo(attachment.toString());
+            assertThat(group.results()).containsExactly(new Rank(1, "张勇", null, "02:12:35", null),
+                    new Rank(2, "王东", null, "02:13:48", null), new Rank(3, "李成", null, "02:14:55", null));
+        });
+    }
+
+    private static OfficialMarathonImageNotice.Word word(int x, int y, String text) {
+        return new OfficialMarathonImageNotice.Word(x, y, 20, 95, text);
     }
 
     private static OfficialMarathonResultLookup lookup(List<URI> seen, Map<String, String> pages,

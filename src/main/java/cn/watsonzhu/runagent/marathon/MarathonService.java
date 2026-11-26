@@ -33,6 +33,7 @@ public final class MarathonService {
     private static final Logger log = LoggerFactory.getLogger(MarathonService.class);
     private static final ZoneId DEFAULT_ZONE = ZoneId.of("Asia/Shanghai");
     private static final long LOOKUP_BUDGET = Duration.ofSeconds(10).toNanos();
+    private static final long IMAGE_LOOKUP_BUDGET = Duration.ofSeconds(20).toNanos();
     private static final long MISS_COOLDOWN = Duration.ofMinutes(3).toNanos();
     private static final int DAILY_LOOKUPS = 12;
     private static final int MAX_SCHEDULED_LOOKUPS = 6;
@@ -85,10 +86,12 @@ public final class MarathonService {
         var targets = snapshot.events().stream()
                 .filter(event -> eligibleForBackfill(event, now))
                 .sorted(Comparator.comparing(Event::raceDate).thenComparing(Event::eventId))
-                .filter(event -> !seriesById.get(event.seriesId()).officialHosts().isEmpty())
                 .flatMap(event -> event.distances().stream().map(distance ->
                         new BackfillTarget(event, new MarathonPodiumStore.Key(event.eventId(), distance))))
-                .filter(target -> !completeOverall(readCache(target.key(), target.event(), true).orElse(null), null))
+                .filter(target -> !seriesById.get(target.event().seriesId()).officialHosts().isEmpty()
+                        || lookup.hasImageNotice(target.event(), target.key().distance()))
+                .filter(target -> !completeForBackfill(readCache(target.key(), target.event(), true).orElse(null),
+                        target.event(), target.key().distance()))
                 .limit(MAX_SCHEDULED_LOOKUPS)
                 .toList();
 
@@ -216,7 +219,8 @@ public final class MarathonService {
 
     private Optional<Podium> fill(Series series, Event event, int year, MarathonPodiumStore.Key key, Category category,
                                   FillMode mode) {
-        long deadline = System.nanoTime() + LOOKUP_BUDGET;
+        long deadline = System.nanoTime() + (lookup.hasImageNotice(event, key.distance())
+                ? IMAGE_LOOKUP_BUDGET : LOOKUP_BUDGET);
         var mine = new CompletableFuture<Optional<Podium>>();
         var existing = inFlight.putIfAbsent(key, mine);
         if (existing != null) return await(existing, deadline);
@@ -235,7 +239,7 @@ public final class MarathonService {
         var previous = readCache(key, event, true).orElse(null);
         boolean cacheSatisfiesQuery = switch (mode) {
             case ON_MISS -> hasGroup(previous, category);
-            case COMPLETE -> completeOverall(previous, null);
+            case COMPLETE -> completeForBackfill(previous, event, key.distance());
             case REFRESH -> false;
         };
         if (cacheSatisfiesQuery) return Optional.of(previous);
@@ -403,6 +407,13 @@ public final class MarathonService {
                         && group.subCategory() == SubCategory.OVERALL
                         && group.results().stream().map(Rank::rank).distinct().count() == 3)
                 .count() == (category == null ? 2 : 1);
+    }
+
+    private boolean completeForBackfill(Podium podium, Event event, Distance distance) {
+        return completeOverall(podium, null) && (!lookup.hasImageNotice(event, distance) || podium.groups().stream()
+                .filter(group -> group.subCategory() == SubCategory.DOMESTIC
+                        && group.results().stream().map(Rank::rank).distinct().count() == 3)
+                .count() == 2);
     }
 
     private static PodiumResult project(Podium source, Category category, String name) {

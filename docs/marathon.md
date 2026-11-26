@@ -34,11 +34,19 @@ python3 scripts/sync_marathon_events.py --output .run-agent/marathon_events.json
 | `RUN_AGENT_MARATHON_PODIUM_DIR` | 每届每项目的 JSON 缓存目录，默认 `.run-agent/marathon-podiums`。 |
 | `RUN_AGENT_MARATHON_LOOKUP_ENABLED` | 已认证站主的在线成绩查证开关，默认 `false`。 |
 | `RUN_AGENT_MARATHON_SCHEDULE_ENABLED` | 赛后成绩定时补采开关，默认 `false`。需要同时启用赛事和在线查证。 |
-| `RUN_AGENT_MARATHON_TAVILY_API_KEY` | Tavily 服务端密钥。线上回填启用但密钥为空时，缓存查询仍可用。 |
+| `RUN_AGENT_MARATHON_TAVILY_API_KEY` | Tavily 服务端密钥。留空时仍可查缓存、直读已知完赛页和已登记的图片公示。 |
 
 已核验结果按项目和组别缓存。访客和旧版 Agent 查询本地成绩。站主通过原有 `/api/v1/chat` 鉴权后可在缺少请求组别时尝试回填，也可明确要求刷新某届成绩。回填优先读取赛历已记录的完赛来源，榜单已核验且完整时直接入库，其余情况用 Tavily 发现官方来源。回填只发布能在获准官方页面核对的具体排名，失败后保留已有证据。明确的官方撤榜随来源留档。成绩查证有独立请求预算、并发上限和每日 12 次外部查证上限。
 
-定时补采每天北京时间 02:00 从已加载的赛历选择项目。已确认或已完赛、且赛事当地日期已过比赛日 1–7 天的项目进入候选。已缓存完整男女总榜的项目跳过。每次最多检查 6 个未补齐项目，与站主手动查证共用每日 12 次联网预算。官方成绩暂未发布或只公布部分时，在后续夜间任务继续检查，已有核验结果继续可查。
+定时补采每天北京时间 02:00 从已加载的赛历选择项目。已确认或已完赛、且赛事当地日期已过比赛日 1–7 天的项目进入候选。每次最多检查 6 个未补齐项目，与站主手动查证共用每日 12 次联网预算。已缓存完整男女总榜的项目跳过。登记了图片公示的项目还会检查中国籍榜是否补齐。已有核验结果继续可查。
+
+## 图片成绩公示
+
+`src/main/resources/marathon/marathon_image_notices.json` 按赛事届次、比赛日和项目登记公示页、附件、SHA-256 和榜单区域。首个来源是 2026 南京马拉松组委会。公示换图或添加其他届次时，核对版本和裁切区域后更新登记。
+
+优先使用已核验的网页正文或表格。缺少组别或前三名时，服务用公示页作为 `Referer` 下载该页列出的已登记 PNG。校验原图 SHA-256 后，用 Pillow 裁切缩放、用 Tesseract 识别登记区域。表头须含排名、姓名和枪声成绩，前三行须同时通过名次、姓名和用时校验。图片成绩的缓存保留公示页和原图地址。OCR 失败时保留已有网页证据。
+
+发布镜像包含 Python 3、Pillow、Tesseract 及其中英文语言模型。本机查证图片成绩时，需要在 `PATH` 上提供带 Pillow 的 Python 3 和带 `chi_sim`、`eng` 语言模型的 Tesseract。已过定时窗口的历史公示可由站主请求刷新对应届次。
 
 部署脚本把发布根下的 `marathon-data` 目录以只读方式挂载到容器。同步输出文件为 `marathon-data/marathon_events.json`，需能被容器 UID 10001 读取。成绩保存在独立的 `run-marathon-podiums` 卷，镜像回滚时保留。调整功能开关、搜索密钥时使用服务端环境文件并重建服务。
 

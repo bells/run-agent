@@ -195,6 +195,42 @@ class MarathonServiceTest {
     }
 
     @Test
+    void scheduledLookupCompletesRegisteredDomesticPodiumsAfterOverallPodiumsAreCached() {
+        var searches = new AtomicInteger();
+        var publicationDay = Clock.fixed(Instant.parse("2026-11-25T18:00:00Z"), ZoneOffset.UTC);
+        var textOnly = service(publicationDay, (series, event, year, distance, deadline) ->
+                Optional.of(scheduledResult(event, distance, Category.MEN, Category.WOMEN)));
+        textOnly.refreshRecentPodiums();
+
+        var image = new Source("https://example.test/notice", "合成公示", publicationDay.instant(),
+                "https://example.test/image.png");
+        MarathonResultLookup provider = new MarathonResultLookup() {
+            @Override
+            public boolean hasImageNotice(Event event, Distance distance) {
+                return event.eventId().equals("nanjing_marathon_2026") && distance == Distance.MARATHON;
+            }
+
+            @Override
+            public Optional<Podium> lookup(Series series, Event event, int year, Distance distance, long deadline) {
+                searches.incrementAndGet();
+                var overall = scheduledResult(event, distance, Category.MEN, Category.WOMEN);
+                var groups = overall.groups().stream().map(group -> new Group(group.category(),
+                        SubCategory.DOMESTIC, image, group.results())).toList();
+                return Optional.of(new Podium(1, event.eventId(), event.seriesId(), year, event.raceDate(),
+                        distance, groups, null, publicationDay.instant()));
+            }
+        };
+        var withImages = service(publicationDay, provider);
+        withImages.refreshRecentPodiums();
+        withImages.refreshRecentPodiums();
+
+        assertThat(searches).hasValue(1);
+        var groups = service(publicationDay, null).podium("南马", 2026, "All", null, false, false).podium().groups();
+        assertThat(groups).hasSize(4).filteredOn(group -> group.subCategory() == SubCategory.DOMESTIC)
+                .extracting(Group::source).containsExactly(image, image);
+    }
+
+    @Test
     void scheduledAndManualLookupsShareTheDailySearchBudget() {
         var searches = new AtomicInteger();
         var service = service(Clock.fixed(Instant.parse("2026-11-22T18:00:00Z"), ZoneOffset.UTC),

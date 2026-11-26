@@ -54,9 +54,13 @@ public final class OfficialMarathonResultLookup implements MarathonResultLookup 
     private static final int MAX_PAGES = 4;
     private static final int MAX_SEARCH_BYTES = 128 * 1024;
     private static final int MAX_HTML_BYTES = 768 * 1024;
+    private static final int MAX_IMAGE_BYTES = 4 * 1024 * 1024;
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(3);
+    private static final Duration TEXT_LOOKUP_WITH_IMAGE = Duration.ofSeconds(5);
+    private static final Duration IMAGE_BOARD_TIMEOUT = Duration.ofSeconds(4);
     private static final Logger log = LoggerFactory.getLogger(OfficialMarathonResultLookup.class);
     private static final MediaType XHTML = MediaType.parseMediaType("application/xhtml+xml");
+    private static final MediaType PNG = MediaType.IMAGE_PNG;
 
     private final String apiKey;
     private final ObjectMapper json;
@@ -64,49 +68,65 @@ public final class OfficialMarathonResultLookup implements MarathonResultLookup 
     private final ChatClient extractor;
     private final String extractionPrompt;
     private final Clock clock;
+    private final OfficialMarathonImageNotice imageNotice;
     private final Semaphore modelPermits = new Semaphore(2);
 
     public OfficialMarathonResultLookup(String apiKey, ObjectMapper json, ChatModel model,
                                         ObservationRegistry observations, Clock clock) {
         this(apiKey, json, model, observations, clock, WebClient.builder()
                 .clientConnector(new ReactorClientHttpConnector(HttpClient.create().followRedirect(false)))
-                .build());
+                .build(), OfficialMarathonImageNotice.bundled(json));
     }
 
     OfficialMarathonResultLookup(String apiKey, ObjectMapper json, ChatModel model, ObservationRegistry observations,
                                  Clock clock, WebClient http) {
+        this(apiKey, json, model, observations, clock, http,
+                new OfficialMarathonImageNotice(List.of(), (image, subgroup, deadline) -> List.of()));
+    }
+
+    OfficialMarathonResultLookup(String apiKey, ObjectMapper json, ChatModel model, ObservationRegistry observations,
+                                 Clock clock, WebClient http, OfficialMarathonImageNotice imageNotice) {
         this.apiKey = apiKey == null ? "" : apiKey.strip();
         this.json = json;
         this.http = http;
         this.extractor = ChatClient.builder(model, observations, null, null).build();
         this.extractionPrompt = loadPrompt();
         this.clock = clock;
+        this.imageNotice = imageNotice;
+    }
+
+    @Override
+    public boolean hasImageNotice(Event event, Distance distance) {
+        return imageNotice.find(event, distance).isPresent();
     }
 
     @Override
     public Optional<Podium> lookup(Series series, Event event, int year, Distance distance, long deadlineNanos) {
-        if (apiKey.isEmpty() || series.officialHosts().isEmpty() || !withinDeadline(deadlineNanos)) {
-            return Optional.empty();
-        }
+        if (!withinDeadline(deadlineNanos)) return Optional.empty();
+        var notice = imageNotice.find(event, distance)
+                .filter(value -> event.year() == year && event.seriesId().equals(series.seriesId())
+                        && event.raceDate().isBefore(today(event)));
+        long textDeadline = notice.isEmpty() ? deadlineNanos
+                : Math.min(deadlineNanos, System.nanoTime() + TEXT_LOOKUP_WITH_IMAGE.toNanos());
         var hosts = series.officialHosts().stream().filter(OfficialMarathonResultLookup::dnsHost)
                 .map(host -> host.toLowerCase(Locale.ROOT)).collect(Collectors.toUnmodifiableSet());
-        if (hosts.isEmpty()) return Optional.empty();
 
         var pages = new ArrayList<SourcedPage>();
         Optional<URI> knownSource = event != null && event.status() == EventStatus.COMPLETED
                 ? officialUri(event.source().url(), hosts) : Optional.empty();
-        var knownPage = knownSource.flatMap(uri -> fetchPage(uri, series, event, year, distance, deadlineNanos));
+        var knownPage = knownSource.flatMap(uri -> fetchPage(uri, series, event, year, distance, textDeadline));
         knownPage.ifPresent(pages::add);
-        if (knownPage.isEmpty() || !completeTable(knownPage.get().page())) {
-            for (URI candidate : candidates(series, year, distance, hosts, deadlineNanos)) {
-                if (!withinDeadline(deadlineNanos)) return Optional.empty();
-                if (knownSource.filter(candidate::equals).isPresent()) continue;
-                fetchPage(candidate, series, event, year, distance, deadlineNanos).ifPresent(pages::add);
+        if (!apiKey.isEmpty() && !hosts.isEmpty() && (knownPage.isEmpty() || !completeTable(knownPage.get().page()))) {
+            for (URI candidate : candidates(series, year, distance, hosts, textDeadline)) {
+                if (!withinDeadline(textDeadline)) break;
+                if (knownSource.filter(candidate::equals).isPresent()
+                        || notice.filter(value -> value.page().equals(candidate)).isPresent()) continue;
+                fetchPage(candidate, series, event, year, distance, textDeadline).ifPresent(pages::add);
             }
         }
 
         var dates = pages.stream().map(source -> source.page().raceDate()).distinct().toList();
-        if (dates.size() != 1 || !withinDeadline(deadlineNanos)) return Optional.empty();
+        if (dates.size() > 1 || dates.isEmpty() && notice.isEmpty() || !withinDeadline(deadlineNanos)) return Optional.empty();
         var groups = new LinkedHashMap<GroupKey, Group>();
         var disputed = new HashSet<GroupKey>();
         pages.forEach(page -> putGroups(groups, disputed, page.page().tableRows(), page.source()));
@@ -114,14 +134,64 @@ public final class OfficialMarathonResultLookup implements MarathonResultLookup 
         var prose = pages.stream().filter(page -> page.page().prose().stream()
                 .anyMatch(line -> !groups.containsKey(line.row().group()) && !disputed.contains(line.row().group())))
                 .findFirst();
-        prose.ifPresent(page -> putGroups(groups, disputed, extract(series, year, distance, page.page(), deadlineNanos)
+        prose.ifPresent(page -> putGroups(groups, disputed, extract(series, year, distance, page.page(), textDeadline)
                 .stream().filter(row -> !groups.containsKey(row.group())).toList(), page.source()));
         pages.forEach(page -> putWithdrawals(groups, page.page().withdrawals(), page.source()));
+        notice.ifPresent(value -> fillImageGroups(value, groups, disputed,
+                deadlineNanos - TimeUnit.MILLISECONDS.toNanos(350)));
         if (groups.isEmpty() || !withinDeadline(deadlineNanos)) return Optional.empty();
 
         String eventId = event == null ? series.seriesId() + "_" + year : event.eventId();
-        return Optional.of(new Podium(1, eventId, series.seriesId(), year, dates.getFirst(), distance,
+        LocalDate raceDate = dates.isEmpty() ? notice.orElseThrow().raceDate() : dates.getFirst();
+        return Optional.of(new Podium(1, eventId, series.seriesId(), year, raceDate, distance,
                 List.copyOf(groups.values()), null, clock.instant()));
+    }
+
+    private void fillImageGroups(OfficialMarathonImageNotice.Notice notice, Map<GroupKey, Group> groups,
+                                 Set<GroupKey> disputed, long deadline) {
+        if (!withinDeadline(deadline) || notice.attachments().stream().flatMap(attachment -> attachment.boards().stream())
+                .noneMatch(board -> needsImage(board, groups, disputed))) return;
+        var html = request(http.get().uri(notice.page()).accept(MediaType.TEXT_HTML, XHTML),
+                MAX_HTML_BYTES, deadline, MediaType.TEXT_HTML, XHTML);
+        if (html.isEmpty()) return;
+        Set<String> linked;
+        try {
+            linked = OfficialMarathonImageNotice.linkedImages(html.get().bytes(), html.get().type().getCharset(), notice);
+        } catch (IOException | RuntimeException exception) {
+            log.debug("marathon_image_notice status=NOTICE_UNAVAILABLE");
+            return;
+        }
+        int verifiedGroups = 0;
+        for (var attachment : notice.attachments()) {
+            if (!withinDeadline(deadline)) break;
+            var boards = attachment.boards().stream().filter(board -> needsImage(board, groups, disputed)).toList();
+            if (boards.isEmpty() || !linked.contains(attachment.url().toString())) continue;
+            var png = request(http.get().uri(attachment.url()).header("Referer", notice.page().toString()).accept(PNG),
+                    MAX_IMAGE_BYTES, deadline, PNG);
+            if (png.isEmpty() || !OfficialMarathonImageNotice.verifiedAttachment(png.get().bytes(), attachment)) continue;
+            var source = new Source(notice.page().toString(), notice.organization(), clock.instant(),
+                    attachment.url().toString());
+            for (var board : boards) {
+                if (!withinDeadline(deadline)) break;
+                var ranks = imageNotice.read(png.get().bytes(), attachment, board,
+                        Math.min(deadline, System.nanoTime() + IMAGE_BOARD_TIMEOUT.toNanos()));
+                var key = new GroupKey(board.category(), board.subCategory());
+                var previous = groups.get(key);
+                if (!ranks.isEmpty() && (previous == null || covers(ranks, previous.results()))) {
+                    groups.put(key, new Group(board.category(), board.subCategory(), source, ranks));
+                    verifiedGroups++;
+                }
+            }
+        }
+        log.info("marathon_image_notice verifiedGroups={}", verifiedGroups);
+    }
+
+    private static boolean needsImage(OfficialMarathonImageNotice.Board board, Map<GroupKey, Group> groups,
+                                      Set<GroupKey> disputed) {
+        var key = new GroupKey(board.category(), board.subCategory());
+        var group = groups.get(key);
+        return !disputed.contains(key) && (group == null
+                || group.withdrawals().isEmpty() && group.results().stream().map(Rank::rank).distinct().count() < 3);
     }
 
     private Optional<SourcedPage> fetchPage(URI candidate, Series series, Event event, int year, Distance distance,

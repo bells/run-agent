@@ -10,4 +10,8 @@ import cn.watsonzhu.runagent.marathon.MarathonData.Series;
 @FunctionalInterface
 public interface MarathonResultLookup {
     Optional<Podium> lookup(Series series, Event event, int year, Distance distance, long deadlineNanos);
+
+    default boolean hasImageNotice(Event event, Distance distance) {
+        return false;
+    }
 }

@@ -69,7 +69,7 @@ final class MarathonAnswerText {
                 case INVALID -> "成绩查询条件有误。请核对赛事、届次及项目。";
                 case NOT_STARTED -> "尚未开赛，暂未产生正式成绩。";
                 case NOT_CACHED -> "本地成绩未收录此届次或组别的已核验官方榜单。";
-                case PENDING -> "尚无可确认的官方成绩，请等待发布或进一步核验。";
+                case PENDING -> "系统暂未取得可展示的已核验官方成绩。";
                 case UNAVAILABLE -> "暂未取得足够的官方成绩证据。";
                 default -> "暂无匹配的赛事届次或官方榜单。";
             });

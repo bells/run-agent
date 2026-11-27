@@ -9,7 +9,7 @@ from pathlib import Path
 import shutil
 import tempfile
 
-from collect_marathon_sub3 import MAX_EVENTS, OFFICIAL_EXACT_COUNT, SCOPE
+from marathon_sub3_snapshot import MAX_EVENTS, OFFICIAL_EXACT_COUNT, SCOPE
 from sync_marathon_events import https_url, iso_date, read_json, require, stamp, string, write_lock
 
 

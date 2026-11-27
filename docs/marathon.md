@@ -79,7 +79,7 @@ python3 scripts/render_marathon_sub3_draft.py --dry-run
 - [官方 2026 年初赛事目录 PDF](https://file.shuzixindong.com/changzheng/84554/fddbe29f6e434035918201d2a17dbcac.pdf) 共 492 条。导入固定版 PDF 时按序号及摘要校验，名单变更后更新审核记录或将新届次加入清单。原始 PDF 的计划日期可为某月或日期范围。
 - `scripts/marathon_sub3_sources.json` 登记已核对并可以采集的届次。选项 `--manifest` 可指定自己的清单。起始清单包含两个官方公告。以同一段原文明确写出全马、有效净计时、严格小于三小时和总数的公告可登记为 `strict_announcement`。正则需要同时捕获 `basis` 与 `count`，并登记已人工核对的 UTF-8 正文 `sha256`。公告变动须重新核对。带 PDF 时会另外跟踪目录内其余全马候选。更新已经导入完整 PDF 的同年快照时需继续提供 PDF。缺少结果来源时记录为待核验。
 - 仅对登记为已完赛的届次采集结果。默认直接获取官方公告，遇到站点无法自动访问时，可通过 `--announcement-dir` 指定已经核对的本地原文，采用 UTF-8，仅有一个公告地址时按 `<event_id>.html` 命名。有不同的严格榜与披露地址时，分别用 `<event_id>.strict.html` 和 `<event_id>.disclosure.html`。该目录应由操作人员控制。命令每次只访问登记过的来源，读取或解析失败会打印届次和错误类型。
-- 完整官方净计时导出登记在届次的 `results` 字段。CSV 表头为 `bib,net_time,status`。成绩格式为 `H:MM:SS` 或 `HH:MM:SS`，有效成绩状态为 `FINISHED`，`DNS`、`DNF`、`DSQ`、`DQ`、`INVALID` 排除。清单登记 `file`（相对清单目录）、`url`（官方出处）、`timing_basis: NET_TIME`、`coverage: ALL_RESULT_ROWS`、`expected_rows` 和 `sha256`。只给有完整性证明的公开成绩登记该来源，原始下载和逐人 CSV 保存在本地。
+- 完整官方净计时导出登记在届次的 `results` 字段。CSV 表头为 `bib,net_time,status`。成绩格式为 `H:MM:SS` 或 `HH:MM:SS`，有效成绩状态为 `FINISHED`，`DNS`、`DNF`、`DSQ`、`DQ`、`INVALID` 排除。清单登记 `file`（相对清单目录）或 `download_url`（直接公开 CSV 地址）、`url`（官方出处）、`timing_basis: NET_TIME`、`coverage: ALL_RESULT_ROWS`、`expected_rows` 和 `sha256`。不同计时商的 CSV 可以通过 `columns` 显式映射 `bib`、`net_time` 和 `status`，通过 `statuses` 映射原值到上述标准状态。默认 UTF-8，也可显式配置 `encoding: gb18030`。只给有完整性证明的公开成绩登记该来源，原始下载和逐人 CSV 保存在本地。
 - 采集命令的 `--dry-run` 将候选 JSON 打到标准输出。`--output` 指定持久化文件，默认 `.run-agent/marathon-sub3.json`。可由服务器任务每天运行生产采集，输出到部署根目录下的 `marathon-data/marathon-sub3.json`。Java 容器已有只读挂载，配置 `RUN_AGENT_MARATHON_SUB_THREE_SNAPSHOT` 指向对应文件。尚未验证数据时，查询显示待核验的范围。
 - 草稿预览默认输出到 `output/drafts/`，同一版本可重跑，包含 `facts.json` 和 `preview.html`。存在可排名成绩时一并生成 `ranking.png`。浏览器直接打开 HTML 即可。
 
@@ -88,3 +88,5 @@ python3 scripts/render_marathon_sub3_draft.py --dry-run
 [设计及后续公众号阶段](superpowers/specs/2026-11-26-marathon-sub3-design.md)
 
 公众号选题和本地预览的统一入口见 [微信公众号跑步内容流水线](content-pipeline.md)。
+
+[生产定时补采与回滚](marathon-sub3-schedule.md) · [赛事公开资料检索](marathon-evidence.md)

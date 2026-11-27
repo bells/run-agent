@@ -26,6 +26,7 @@ services:
       RUNNING_DATA_PATH: /data/activities.json
       RUN_AGENT_MARATHON_SNAPSHOT: /marathon-data/marathon_events.json
       RUN_AGENT_MARATHON_SUB_THREE_SNAPSHOT: /marathon-data/marathon-sub3.json
+      RUN_AGENT_MARATHON_EVIDENCE_CORPUS: /marathon-data/marathon-evidence.json
       RUN_AGENT_CONVERSATIONS_DIR: /var/lib/run-agent/conversations
       RUN_AGENT_MARATHON_PODIUM_DIR: /var/lib/run-agent/marathon-podiums
     ports:

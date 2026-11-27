@@ -6,6 +6,7 @@ import csv
 from datetime import datetime, timezone
 from hashlib import sha256
 from html.parser import HTMLParser
+from http.client import HTTPException
 from io import StringIO
 import json
 from pathlib import Path
@@ -13,20 +14,19 @@ import re
 import sys
 import unicodedata
 from urllib.error import HTTPError
+from urllib.request import Request, build_opener
 
 from caa_marathon_directory import merge_directory, read_directory
+from marathon_sub3_snapshot import MAX_EVENTS, MAX_FINISHERS, OFFICIAL_EXACT_COUNT, SCOPE, validate_snapshot
 
 from sync_marathon_events import (
-    MAX_BYTES, SHANGHAI, SLUG, atomic_publish, fetch_html, https_url, iso_date, read_json, require,
+    MAX_BYTES, SHANGHAI, SLUG, NoRedirects, atomic_publish, fetch_html, https_url, iso_date, read_json, require,
     string, utc_timestamp, write_lock,
 )
 
 PILOT = Path(__file__).with_name("marathon_sub3_sources.json")
 MAX_RESULT_BYTES = 16 * 1024 * 1024
-MAX_EVENTS = 2000
-SCOPE = "CN_MAINLAND_CAA_AB_MARATHON"
 THRESHOLD = 3 * 60 * 60
-OFFICIAL_EXACT_COUNT = "OFFICIAL_EXACT_COUNT"
 EXACT_COUNT_BASIS = re.compile(r"(?:全马|全程马拉松)有效净(?:成绩|计时)(?:严格)?(?:小于|少于|<)(?:03:00:00|3小时)")
 INVALID_RESULTS = {"DNF", "DNS", "DSQ", "DQ", "INVALID"}
 NET_TIME = re.compile(r"([0-9]{1,2}):([0-5][0-9]):([0-5][0-9])")
@@ -34,24 +34,40 @@ EXCLUDED_PROVINCES = ("香港", "澳门", "澳門", "台湾", "臺灣", "台灣"
 MARATHON_STATES = {"PLANNED", "CONFIRMED", "POSTPONED", "CANCELLED", "COMPLETED"}
 
 
-def count_results(content, expected_rows):
-    """Read a normalized official result export with one record per bib."""
-    require(type(expected_rows) is int and 0 < expected_rows <= 150_000, "Invalid official result row count")
+def count_results(content, expected_rows, columns=None, statuses=None):
+    """Read an official result export with one record per bib."""
+    require(type(expected_rows) is int and 0 < expected_rows <= MAX_FINISHERS, "Invalid official result row count")
     reader = csv.DictReader(StringIO(content, newline=""), strict=True)
-    require(reader.fieldnames == ["bib", "net_time", "status"], "Expected bib,net_time,status")
+    fields = ("bib", "net_time", "status")
+    headers = reader.fieldnames or []
+    if columns is None:
+        require(headers == list(fields), "Expected bib,net_time,status")
+        columns = dict(zip(fields, fields))
+    else:
+        require(isinstance(columns, dict) and set(columns) == set(fields)
+                and all(string(value, 80) and value in headers for value in columns.values())
+                and len(set(columns.values())) == 3 and len(set(headers)) == len(headers),
+                "Invalid official result column mapping")
+    if statuses is not None:
+        require(isinstance(statuses, dict) and len(statuses) <= 30 and all(
+            string(key, 40) and value in (INVALID_RESULTS | {"FINISHED"}) for key, value in statuses.items()
+        ), "Invalid official result status mapping")
     bibs = set()
     verified_count = 0
     finishers = 0
     for row in reader:
-        bib = row["bib"]
-        require(None not in row and string(bib, 64) and bib == bib.strip() and bib not in bibs,
+        bib = row[columns["bib"]]
+        require(None not in row and None not in row.values() and string(bib, 64)
+                and bib == bib.strip() and bib not in bibs,
                 "Invalid or repeated bib")
         bibs.add(bib)
-        status = row["status"]
+        status = row[columns["status"]]
+        if statuses is not None:
+            status = statuses.get(status)
         if status in INVALID_RESULTS:
             continue
         require(status == "FINISHED", "Unknown official result status")
-        match = NET_TIME.fullmatch(row["net_time"] or "")
+        match = NET_TIME.fullmatch(row[columns["net_time"]])
         require(match is not None, "Invalid net finish time")
         hours, minutes, seconds = map(int, match.groups())
         duration = hours * 3600 + minutes * 60 + seconds
@@ -103,21 +119,39 @@ def disclosure(html, config, strict=False):
     count = matches[0].group("count")
     require(re.fullmatch(r"[0-9]{1,6}|[0-9]{1,3},[0-9]{3}", count) is not None, "Invalid disclosed count")
     number = int(count.replace(",", ""))
-    require(number <= 150_000, "Official disclosure exceeds supported count range")
+    require(number <= MAX_FINISHERS, "Official disclosure exceeds supported count range")
     return number
+
+
+def fetch_results(url):
+    https_url(url)
+    request = Request(url, headers={"User-Agent": "RunAgent-MarathonResults/1.0",
+                                    "Accept": "text/csv, application/octet-stream"})
+    with build_opener(NoRedirects()).open(request, timeout=15) as response:
+        require(response.headers.get_content_type() in {"text/csv", "application/csv", "application/octet-stream"},
+                "Unexpected official results content type")
+        return response.read(MAX_RESULT_BYTES + 1)
 
 
 def release_evidence(config, root, now):
     require(config["timing_basis"] == "NET_TIME" and config["coverage"] == "ALL_RESULT_ROWS",
             "The result file must cover all rows and use net timing")
-    path = (root / config["file"]).resolve()
-    require(path.is_relative_to(root.resolve()), "Result file must be within the manifest directory")
-    with path.open("rb") as handle:
-        document = handle.read(MAX_RESULT_BYTES + 1)
+    local_path, download_url = config.get("file"), config.get("download_url")
+    require(bool(local_path) != bool(download_url), "Choose one official results file or download URL")
+    if download_url:
+        document = fetch_results(download_url)
+    else:
+        path = (root / local_path).resolve()
+        require(path.is_relative_to(root.resolve()), "Result file must be within the manifest directory")
+        with path.open("rb") as handle:
+            document = handle.read(MAX_RESULT_BYTES + 1)
     require(len(document) <= MAX_RESULT_BYTES, "Official result export is too large")
     digest = sha256(document).hexdigest()
     require(digest == config["sha256"], "Result file hash does not match the reviewed export")
-    count, finishers = count_results(document.decode("utf-8-sig"), config["expected_rows"])
+    encoding = config.get("encoding", "utf-8-sig")
+    require(encoding in ("utf-8-sig", "gb18030"), "Unsupported official result encoding")
+    count, finishers = count_results(document.decode(encoding), config["expected_rows"],
+                                     config.get("columns"), config.get("statuses"))
     return {"status": "VERIFIED", "verified_count": count, "finishers": finishers,
             "source_url": config["url"], "evidence_sha256": digest, "collected_at": utc_timestamp(now)}
 
@@ -138,7 +172,7 @@ def collect_row(catalog, event, root, now, previous, fetch):
     if results:
         try:
             return {**event, **release_evidence(results, root, now)}
-        except (OSError, ValueError, csv.Error) as exc:
+        except (OSError, HTTPException, ValueError, csv.Error) as exc:
             print(f"Warning: {event['event_id']} results {type(exc).__name__}", file=sys.stderr)
             prior = retained(previous, event, results)
             if prior:
@@ -158,11 +192,11 @@ def collect_row(catalog, event, root, now, previous, fetch):
                 return {**event, **evidence, "status": "VERIFIED", "verified_count": count,
                         "evidence_kind": OFFICIAL_EXACT_COUNT}
             return {**event, **evidence, "status": "DISCLOSED", "disclosed_count": count}
-        except (OSError, ValueError) as exc:
+        except (OSError, HTTPException, ValueError) as exc:
             reason = f"HTTP {exc.code}" if isinstance(exc, HTTPError) else type(exc).__name__
             channel = "strict report" if strict else "announcement"
             print(f"Warning: {event['event_id']} {channel} {reason}", file=sys.stderr)
-            prior = retained(previous, event, report) if isinstance(exc, OSError) else None
+            prior = retained(previous, event, report) if isinstance(exc, (OSError, HTTPException)) else None
             expected_kind = "VERIFIED" if strict else "DISCLOSED"
             if prior and prior["status"] == expected_kind:
                 return prior
@@ -240,12 +274,14 @@ def read_archived_html(url, directory, by_url):
     return raw.decode("utf-8-sig")
 
 
-def run(manifest_path, output, dry_run, now, catalog_pdf=None, announcement_dir=None):
+def run(manifest_path, output, dry_run, now, catalog_pdf=None, announcement_dir=None,
+        announcement_fallback_dir=None):
     manifest = read_json(manifest_path)
     if catalog_pdf:
         manifest = merge_directory(manifest, read_directory(catalog_pdf, manifest))
     fetch = fetch_html
-    if announcement_dir:
+    require(not (announcement_dir and announcement_fallback_dir), "Choose one announcement archive mode")
+    if announcement_dir or announcement_fallback_dir:
         by_url = {}
         for row in manifest["events"]:
             disclosure_report, strict = row.get("announcement"), row.get("strict_announcement")
@@ -258,7 +294,16 @@ def run(manifest_path, output, dry_run, now, catalog_pdf=None, announcement_dir=
                 by_url[disclosure_report["url"]] = f"{event_id}{'.disclosure' if distinct else ''}.html"
             if strict:
                 by_url[strict["url"]] = f"{event_id}{'.strict' if distinct else ''}.html"
-        fetch = lambda url: read_archived_html(url, announcement_dir, by_url)
+        def fetch(url):
+            if announcement_dir:
+                return read_archived_html(url, announcement_dir, by_url)
+            try:
+                return fetch_html(url)
+            except (OSError, HTTPException) as error:
+                try:
+                    return read_archived_html(url, announcement_fallback_dir, by_url)
+                except FileNotFoundError:
+                    raise error from None
 
     def gather():
         try:
@@ -268,7 +313,7 @@ def run(manifest_path, output, dry_run, now, catalog_pdf=None, announcement_dir=
         if (catalog_pdf is None and "directory" in manifest and prior and prior.get("year") == manifest["year"]
                 and len(prior["events"]) > len(manifest["events"])):
             raise ValueError("Supply the catalog PDF to retain the previously imported event catalog")
-        summary = collect(manifest, manifest_path.parent, now, prior=prior, fetch=fetch)
+        summary = validate_snapshot(collect(manifest, manifest_path.parent, now, prior=prior, fetch=fetch))
         data = (json.dumps(summary, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
         require(len(data) <= MAX_BYTES, "Candidate snapshot exceeds size limit")
         return data
@@ -285,12 +330,14 @@ def main():
     parser.add_argument("--manifest", type=Path, default=PILOT, help="Annual catalog and approved sources")
     parser.add_argument("--output", type=Path, default=Path(".run-agent/marathon-sub3.json"))
     parser.add_argument("--catalog-pdf", type=Path, help="Import the approved official CAA directory PDF")
-    parser.add_argument("--announcement-dir", type=Path, help="Read UTF-8 HTML from <event_id>.html in this directory")
+    archive = parser.add_mutually_exclusive_group()
+    archive.add_argument("--announcement-dir", type=Path, help="Read registered HTML from this offline directory")
+    archive.add_argument("--announcement-fallback-dir", type=Path, help="Read archived HTML only if live fetch fails")
     parser.add_argument("--dry-run", action="store_true", help="Print the candidate snapshot without updating files")
     args = parser.parse_args()
     try:
         run(args.manifest, args.output, args.dry_run, datetime.now(timezone.utc),
-            args.catalog_pdf, args.announcement_dir)
+            args.catalog_pdf, args.announcement_dir, args.announcement_fallback_dir)
     except (OSError, ValueError, KeyError, TypeError, ImportError) as exc:
         parser.exit(1, f"Failed to write sub-three snapshot: {exc}\n")
 

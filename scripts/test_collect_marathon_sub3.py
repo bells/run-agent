@@ -1,5 +1,6 @@
 from datetime import date, datetime, timezone
 from hashlib import sha256
+from http.client import IncompleteRead
 from pathlib import Path
 import json
 import tempfile
@@ -23,6 +24,14 @@ class MarathonSub3Test(unittest.TestCase):
         data = ("bib,net_time,status\n1,2:59:59,FINISHED\n2,3:00:00,FINISHED\n"
                 "3,02:59:00,DSQ\n4,,DNF\n5,3:00:01,FINISHED\n")
         self.assertEqual(count_results(data, 5), (1, 3))
+
+    def test_maps_reviewed_vendor_columns_and_uses_only_the_net_time(self):
+        columns = {"bib": "号码", "net_time": "芯片计时", "status": "状态"}
+        statuses = {"有效": "FINISHED", "取消资格": "DSQ"}
+        csv = "号码,枪声计时,芯片计时,状态\n1,3:00:12,2:59:59,有效\n2,3:00:25,3:00:00,有效\n3,2:55:00,2:54:00,取消资格\n"
+        self.assertEqual(count_results(csv, 3, columns, statuses), (1, 2))
+        with self.assertRaisesRegex(ValueError, "Unknown official result status"):
+            count_results(csv.replace("有效", "未审核"), 3, columns, statuses)
 
     def test_rejects_truncated_or_duplicated_results(self):
         with self.assertRaises(ValueError):
@@ -83,6 +92,34 @@ class MarathonSub3Test(unittest.TestCase):
             result = json.loads(snapshot.read_text())["events"][0]
             self.assertEqual(result["disclosed_count"], 26)
             self.assertEqual(result["source_url"], RACE["announcement"]["url"])
+
+    def test_downloads_a_reviewed_official_csv_and_rejects_changed_bytes(self):
+        official = b"bib,net_time,status\n1,2:59:59,FINISHED\n2,3:00:00,FINISHED\n"
+        config = {"url": "https://example.com/results", "download_url": "https://timekeeper.example.com/full.csv",
+                  "timing_basis": "NET_TIME", "coverage": "ALL_RESULT_ROWS", "expected_rows": 2,
+                  "sha256": sha256(official).hexdigest()}
+        manifest = {"year": 2026, "events": [{**RACE, "results": config}]}
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            with patch("collect_marathon_sub3.fetch_results", create=True, return_value=official) as remote:
+                row = collect(manifest, root, NOW, fetch=lambda _: "")["events"][0]
+            self.assertEqual(row["verified_count"], 1)
+            remote.assert_called_once_with(config["download_url"])
+            with patch("collect_marathon_sub3.fetch_results", return_value=official + b"\n"):
+                changed = collect(manifest, root, NOW, fetch=lambda _: "")["events"][0]
+            self.assertNotIn("verified_count", changed)
+
+    def test_a_failed_live_report_can_use_the_matching_archived_page(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            manifest = root / "manifest.json"
+            manifest.write_text(json.dumps({"year": 2026, "events": [RACE]}))
+            (root / "fixture_2026.html").write_text("<h1>2026示例马拉松</h1><p>本届破三人数达26人。</p>")
+            output = root / "snapshot.json"
+            with patch("collect_marathon_sub3.fetch_html", side_effect=IncompleteRead(b"partial")) as remote:
+                run(manifest, output, False, NOW, announcement_fallback_dir=root)
+            remote.assert_called_once_with(RACE["announcement"]["url"])
+            self.assertEqual(json.loads(output.read_text())["events"][0]["disclosed_count"], 26)
 
     def test_announcement_does_not_capture_the_preceding_chinese_comma(self):
         selector = read_json(PILOT)["events"][0]["announcement"]

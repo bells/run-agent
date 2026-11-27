@@ -71,6 +71,7 @@ run-agent:
     enabled: ${RUN_AGENT_MARATHON_ENABLED:false}
     snapshot: ${RUN_AGENT_MARATHON_SNAPSHOT:}
     sub-three-snapshot: ${RUN_AGENT_MARATHON_SUB_THREE_SNAPSHOT:}
+    evidence-corpus: ${RUN_AGENT_MARATHON_EVIDENCE_CORPUS:}
     podium-directory: ${RUN_AGENT_MARATHON_PODIUM_DIR:.run-agent/marathon-podiums}
     lookup-enabled: ${RUN_AGENT_MARATHON_LOOKUP_ENABLED:false}
     schedule-enabled: ${RUN_AGENT_MARATHON_SCHEDULE_ENABLED:false}

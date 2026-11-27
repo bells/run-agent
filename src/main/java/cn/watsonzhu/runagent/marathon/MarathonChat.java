@@ -102,8 +102,16 @@ public final class MarathonChat {
     private static final Pattern SUB_THREE_YEAR = Pattern.compile("(?<![0-9])([0-9]{2})年");
     private static final Pattern SUB_THREE_UNSUPPORTED = Pattern.compile("半马|半程|海外|国外|港澳台|全球");
 
+    private static final Pattern INTERVIEW_TOPIC = Pattern.compile("采访|访谈|引述|发布会");
+    private static final Pattern COURSE_TOPIC = Pattern.compile("赛道|路线");
+    private static final Pattern PODIUM_ROLE = Pattern.compile("冠军|亚军|季军");
+    private static final Pattern NARRATIVE = Pattern.compile(
+            "(?:赛道|路线).{0,12}(?:特点|特色|爬升|上坡|下坡|路线|平不平|怎么样|如何|体验|介绍|经过)"
+                    + "|(?:介绍|了解).{0,20}(?:赛道|路线)|赛事故事|赛场故事|赛后(?:采访|访谈|引述|发布会)");
+
     private final MarathonService marathons;
     private final MarathonSub3 subThree;
+    private final MarathonEvidenceIndex raceEvidence;
     private final Clock clock;
 
     public MarathonChat(MarathonService marathons, Clock clock) {
@@ -111,9 +119,15 @@ public final class MarathonChat {
     }
 
     public MarathonChat(MarathonService marathons, Clock clock, MarathonSub3 subThree) {
+        this(marathons, clock, subThree, null);
+    }
+
+    public MarathonChat(MarathonService marathons, Clock clock, MarathonSub3 subThree,
+                        MarathonEvidenceIndex raceEvidence) {
         this.marathons = marathons;
         this.clock = clock;
         this.subThree = subThree;
+        this.raceEvidence = raceEvidence;
     }
 
     public Optional<Reply> query(String message, AdviceContext context, boolean owner) {
@@ -139,6 +153,11 @@ public final class MarathonChat {
         boolean schedule = matches(SCHEDULE, text);
         boolean list = matches(CALENDAR_LIST, text);
         boolean participation = matches(PARTICIPATION, text);
+        boolean podiumQuestion = officialPodium && (!matches(INTERVIEW_TOPIC, text) || matches(PODIUM_QUESTION, text));
+        if (!weather && !podiumQuestion && !matches(SCHEDULE_QUESTION, text) && matches(NARRATIVE, text)) {
+            var narrative = narrative(text, advice);
+            if (narrative.isPresent()) return narrative;
+        }
         if (!(podium || weather || advice || schedule || list || participation)) return Optional.empty();
 
         var names = mentionedRaces(text);
@@ -207,6 +226,41 @@ public final class MarathonChat {
                 + "; schedule status: " + event.status() + "; days until event: " + raceEntry.daysUntilRace()
                 + "; distances: " + event.distances() + ".";
         return Optional.of(new Reply(content, modelContext, advice, weatherPlan.context(), weatherPlan.note()));
+    }
+
+    private Optional<Reply> narrative(String text, boolean advice) {
+        if (raceEvidence == null) return Optional.empty();
+        var raceIds = raceEvidence.raceIdsInQuestion(text);
+        if (raceIds.isEmpty()) {
+            return !advice && matches(RACE_WORD, text)
+                    ? Optional.of(Reply.facts("目前没有匹配这场赛事的已核对公开资料。"))
+                    : Optional.empty();
+        }
+        if (raceIds.size() > 1) return Optional.of(Reply.facts("请指定一场赛事查询赛道或采访资料。"));
+        Integer requestedYear = year(text, LocalDate.now(clock.withZone(CHINA)));
+        String raceId = raceIds.iterator().next();
+        MarathonEvidenceIndex.Kind kind = matches(INTERVIEW_TOPIC, text)
+                ? MarathonEvidenceIndex.Kind.INTERVIEW
+                : matches(COURSE_TOPIC, text) ? MarathonEvidenceIndex.Kind.COURSE_GUIDE
+                : MarathonEvidenceIndex.Kind.RACE_REPORT;
+        String requestedDistance = distance(text);
+        var sources = raceEvidence.search(text, raceId, requestedYear, kind,
+                requestedDistance == null ? null : Distance.valueOf(requestedDistance));
+        if (kind == MarathonEvidenceIndex.Kind.INTERVIEW) {
+            var role = PODIUM_ROLE.matcher(text);
+            if (role.find()) {
+                String requested = role.group();
+                sources = sources.stream().filter(match -> match.text().contains(requested)).toList();
+            }
+        }
+        if (sources.isEmpty()) return Optional.of(Reply.facts("目前没有匹配该届次和主题的已核对公开资料。"));
+        String passages = sources.stream().map(match -> {
+            var citation = match.citation();
+            return "- " + citation.year() + " 届 · " + match.text() + "\n  出处 " + citation.publisher()
+                    + "《" + citation.title() + "》 · " + citation.publishedAt() + " · " + citation.url();
+        }).collect(java.util.stream.Collectors.joining("\n\n"));
+        return Optional.of(new Reply("已核对的公开赛事资料\n\n" + passages, passages,
+                false, AdviceContext.NONE, "", true));
     }
 
     private List<String> mentionedRaces(String text) {
@@ -368,7 +422,12 @@ public final class MarathonChat {
     private record WeatherPlan(AdviceContext context, String note, boolean training) {}
 
     public record Reply(String content, String modelContext, boolean adviceRequested, AdviceContext weatherContext,
-                        String weatherNote) {
+                        String weatherNote, boolean narrativeRequested) {
+        public Reply(String content, String modelContext, boolean adviceRequested, AdviceContext weatherContext,
+                     String weatherNote) {
+            this(content, modelContext, adviceRequested, weatherContext, weatherNote, false);
+        }
+
         public boolean allowsAdvice(String advice) {
             return !matches(ADVICE_RACE_FACTS, Normalizer.normalize(advice, Normalizer.Form.NFKC));
         }

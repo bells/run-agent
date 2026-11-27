@@ -1,5 +1,7 @@
 package cn.watsonzhu.runagent.marathon;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalTime;
@@ -7,6 +9,7 @@ import java.time.ZoneOffset;
 
 import cn.watsonzhu.runagent.evidence.AdviceContext;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import tools.jackson.databind.json.JsonMapper;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -16,6 +19,39 @@ class MarathonChatTest {
     private final JsonMapper json = JsonMapper.builder().findAndAddModules().build();
     private final MarathonChat chat = new MarathonChat(new MarathonService(new MarathonCalendar(json, null, CLOCK),
             new MarathonPodiumStore(json, null), null, CLOCK), CLOCK);
+
+    @Test
+    void qualitativeRaceQuestionsRetrieveOnlyNamedRaceEvidenceAndKeepCitations(@TempDir Path temp) throws Exception {
+        Path path = Files.writeString(temp.resolve("race-evidence.json"), """
+                {"schemaVersion":1,"documents":[{"id":"fixture-course","raceId":"fixture_marathon","year":2026,
+                  "kind":"COURSE_GUIDE","distance":"MARATHON","title":"样例赛道说明","publisher":"样例组委会",
+                  "url":"https://example.com/course","publishedAt":"2026-10-24","aliases":["样例马拉松"],
+                  "paragraphs":["赛道特点是后段有连续上坡。"]}]}
+                """);
+        var marathon = new MarathonService(new MarathonCalendar(json, null, CLOCK),
+                new MarathonPodiumStore(json, null), null, CLOCK);
+        var withCorpus = new MarathonChat(marathon, CLOCK, null, new MarathonEvidenceIndex(json, path));
+        var found = withCorpus.query("2026 年样例马拉松赛道有哪些特点？", AdviceContext.NONE, false).orElseThrow();
+        assertThat(found.narrativeRequested()).isTrue();
+        assertThat(found.content()).contains("后段有连续上坡", "https://example.com/course");
+        assertThat(found.modelContext()).contains("后段有连续上坡");
+        assertThat(withCorpus.query("样例马拉松的路线介绍", AdviceContext.NONE, false)).isPresent();
+        var unknown = withCorpus.query("其他马拉松的赛道特点是什么？", AdviceContext.NONE, false).orElseThrow();
+        assertThat(unknown.narrativeRequested()).isFalse();
+        assertThat(unknown.content()).doesNotContain("后段有连续上坡", "example.com");
+        var interview = withCorpus.query("样例马拉松赛后采访提到哪些赛道特点？", AdviceContext.NONE, false)
+                .orElseThrow();
+        assertThat(interview.narrativeRequested()).isFalse();
+        assertThat(interview.content()).doesNotContain("后段有连续上坡");
+        assertThat(withCorpus.query("样例马拉松冠军赛后采访说了什么？", AdviceContext.NONE, false).orElseThrow()
+                .content()).contains("主题");
+        var half = withCorpus.query("样例马拉松半马的赛道特点？", AdviceContext.NONE, false).orElseThrow();
+        assertThat(half.narrativeRequested()).isFalse();
+        assertThat(half.content()).doesNotContain("后段有连续上坡");
+        var withoutCorpus = new MarathonChat(marathon, CLOCK, null, new MarathonEvidenceIndex(json, null));
+        assertThat(withoutCorpus.query("样例马拉松赛道有哪些特点？", AdviceContext.NONE, false).orElseThrow()
+                .narrativeRequested()).isFalse();
+    }
 
     @Test
     void findsAthleteAliasInTheExistingLocalResults() {

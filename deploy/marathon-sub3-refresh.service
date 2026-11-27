@@ -1,0 +1,12 @@
+[Unit]
+Description=Refresh RunAgent marathon sub-three snapshot
+
+[Service]
+Type=oneshot
+Environment=TZ=Asia/Shanghai
+EnvironmentFile=%h/.config/run-agent/marathon-sub3.env
+ExecStart=%h/.local/share/run-agent/marathon-sub3-job/.venv/bin/python %h/.local/share/run-agent/marathon-sub3-job/deploy/marathon-sub3-refresh.py
+TimeoutStartSec=9min
+TimeoutStopSec=15s
+UMask=0077
+NoNewPrivileges=true

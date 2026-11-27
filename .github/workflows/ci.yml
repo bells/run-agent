@@ -22,10 +22,11 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Build and test
         run: ./gradlew --no-daemon build
-      - name: Test public marathon calendar synchronization
+      - name: Test Python data and content pipelines
         run: python3 -m unittest discover -s scripts
       - name: Test release packaging and rollback
         run: |
           bash deploy/test/bundle-test.sh
           bash deploy/test/release-test.sh
           bash deploy/test/snapshot-test.sh
+          python3 deploy/test/marathon-sub3-refresh-test.py

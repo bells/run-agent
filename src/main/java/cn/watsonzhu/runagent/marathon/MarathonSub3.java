@@ -211,7 +211,7 @@ public final class MarathonSub3 {
     }
 
     private static boolean text(String value, int limit) {
-        return value != null && !value.isBlank() && value.length() <= limit
+        return value != null && !value.isBlank() && value.codePointCount(0, value.length()) <= limit
                 && value.codePoints().noneMatch(Character::isISOControl);
     }
 

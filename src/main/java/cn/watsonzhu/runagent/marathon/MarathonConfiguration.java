@@ -40,8 +40,14 @@ class MarathonConfiguration {
     }
 
     @Bean
-    MarathonChat marathonChat(MarathonService service, MarathonSub3 subThree) {
-        return new MarathonChat(service, Clock.systemUTC(), subThree);
+    MarathonEvidenceIndex marathonEvidenceIndex(ObjectMapper json,
+            @Value("${run-agent.marathon.evidence-corpus:}") String corpus) {
+        return new MarathonEvidenceIndex(json, corpus.isBlank() ? null : Path.of(corpus));
+    }
+
+    @Bean
+    MarathonChat marathonChat(MarathonService service, MarathonSub3 subThree, MarathonEvidenceIndex raceEvidence) {
+        return new MarathonChat(service, Clock.systemUTC(), subThree, raceEvidence);
     }
 
     @Bean

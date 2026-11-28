@@ -40,6 +40,22 @@ python3 scripts/sync_marathon_events.py --output .run-agent/marathon_events.json
 
 定时补采每天北京时间 02:00 从已加载的赛历选择项目。已确认或已完赛、且赛事当地日期已过比赛日 1–7 天的项目进入候选。每次最多检查 6 个未补齐项目，与站主手动查证共用每日 12 次联网预算。已缓存完整男女总榜的项目跳过。登记了图片公示的项目还会检查中国籍榜是否补齐。已有核验结果继续可查。
 
+## 赛事动态联网查询
+
+在已有的 `/api/v1/chat` 中，访客和站主可查询「今年上马报名多少人」「上海马拉松有哪些名将要参加」「张水华明天参加哪场马拉松」。首次部署在服务器环境文件中设置 `RUN_AGENT_MARATHON_UPDATES_ENABLED=true`，同时启用赛事模块并配置已有的 Tavily 密钥。访客仍需启用公开问答。
+
+| 配置 | 默认 |
+| --- | --- |
+| `RUN_AGENT_MARATHON_UPDATES_ENABLED` | `false` |
+| `RUN_AGENT_MARATHON_UPDATES_VISITOR_DAILY_LIMIT` | 所有访客共 12 次联网查询 |
+| `RUN_AGENT_MARATHON_UPDATES_OWNER_DAILY_LIMIT` | 站主 24 次联网查询 |
+
+额度按北京时间每日重置，与赛后成绩查证额度独立。服务先查内存缓存，查到资料保留 30 分钟，暂未找到的结果保留 5 分钟。缓存命中不占用联网额度，服务重启清空缓存和计数。动态查询使用一次有界搜索和一次结构化提取，搜索词来自赛事或公开跑者姓名、日期和查询类别。
+
+回答区分报名人数、名额和实际参赛人数，精英名单区分确认、受邀和报道。只有可在搜索来源的摘录中定位的事实才会展示，每条附来源链接和可得的发布日期。上线验收用访客身份执行三类示例，再复查缓存命中与缺少证据的返回。日志 `marathon_updates` 记录类别、状态和耗时。
+
+[设计与验收范围](superpowers/specs/2026-11-28-marathon-updates-design.md)
+
 ## 图片成绩公示
 
 `src/main/resources/marathon/marathon_image_notices.json` 按赛事届次、比赛日和项目登记公示页、附件、SHA-256 和榜单区域。首个来源是 2026 南京马拉松组委会。公示换图或添加其他届次时，核对版本和裁切区域后更新登记。

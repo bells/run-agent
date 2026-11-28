@@ -2,6 +2,7 @@ package cn.watsonzhu.runagent.marathon;
 
 import java.nio.file.Path;
 import java.time.Clock;
+import java.util.Optional;
 
 import io.micrometer.observation.ObservationRegistry;
 import org.slf4j.LoggerFactory;
@@ -46,8 +47,22 @@ class MarathonConfiguration {
     }
 
     @Bean
-    MarathonChat marathonChat(MarathonService service, MarathonSub3 subThree, MarathonEvidenceIndex raceEvidence) {
-        return new MarathonChat(service, Clock.systemUTC(), subThree, raceEvidence);
+    @ConditionalOnProperty(prefix = "run-agent.marathon", name = "updates-enabled", havingValue = "true")
+    MarathonUpdates marathonUpdates(ChatModel model, ObservationRegistry observations,
+            @Value("${run-agent.marathon.tavily-api-key:}") String apiKey,
+            @Value("${run-agent.marathon.updates-visitor-daily-limit:12}") int visitorLimit,
+            @Value("${run-agent.marathon.updates-owner-daily-limit:24}") int ownerLimit) {
+        if (apiKey.isBlank()) {
+            LoggerFactory.getLogger(MarathonConfiguration.class).warn("marathon_updates status=MISSING_SEARCH_KEY");
+        }
+        var client = new MarathonUpdatesClient(apiKey, model, observations);
+        return new MarathonUpdates(Clock.systemUTC(), visitorLimit, ownerLimit, client::lookup);
+    }
+
+    @Bean
+    MarathonChat marathonChat(MarathonService service, MarathonSub3 subThree, MarathonEvidenceIndex raceEvidence,
+                              Optional<MarathonUpdates> updates) {
+        return new MarathonChat(service, Clock.systemUTC(), subThree, raceEvidence, updates.orElse(null));
     }
 
     @Bean

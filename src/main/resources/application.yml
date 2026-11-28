@@ -76,6 +76,9 @@ run-agent:
     lookup-enabled: ${RUN_AGENT_MARATHON_LOOKUP_ENABLED:false}
     schedule-enabled: ${RUN_AGENT_MARATHON_SCHEDULE_ENABLED:false}
     tavily-api-key: ${RUN_AGENT_MARATHON_TAVILY_API_KEY:}
+    updates-enabled: ${RUN_AGENT_MARATHON_UPDATES_ENABLED:false}
+    updates-visitor-daily-limit: ${RUN_AGENT_MARATHON_UPDATES_VISITOR_DAILY_LIMIT:12}
+    updates-owner-daily-limit: ${RUN_AGENT_MARATHON_UPDATES_OWNER_DAILY_LIMIT:24}
   run-review:
     enabled: ${RUN_AGENT_RUN_REVIEW_ENABLED:false}
     generation-enabled: ${RUN_AGENT_RUN_REVIEW_GENERATION_ENABLED:false}

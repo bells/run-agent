@@ -102,6 +102,22 @@ public final class MarathonChat {
     private static final Pattern SUB_THREE_YEAR = Pattern.compile("(?<![0-9])([0-9]{2})年");
     private static final Pattern SUB_THREE_UNSUPPORTED = Pattern.compile("半马|半程|海外|国外|港澳台|全球");
 
+    private static final Pattern REGISTRATION_DATA = Pattern.compile(
+            "预?报名(?:总?人数|人次|数|有?多少人|几人|了多少人|了多少)|(?:多少|几)人(?:预)?报名"
+                    + "|(?:参赛|抽签|直通|报名|竞赛)(?:总?名额|规模)|(?:赛事|全马|半马)规模"
+                    + "|(?:参赛|起跑)(?:总?人数|有?多少人|几人)|(?:多少|几)人(?:参加|参赛|起跑)");
+    private static final Pattern ELITE_LINEUP = Pattern.compile(
+            "精英(?:选手|跑者|名单|阵容)|(?:国内|国际|国外)?名将|特邀(?:选手|名单|阵容)|参赛阵容");
+    private static final String QUERY_PREFIX = "(?:(?:请问|帮我查(?:一下)?|查一下|想知道)\\s*)?";
+    private static final Pattern NAMED_EVENT = Pattern.compile("^" + QUERY_PREFIX
+            + "(?:(?:今年|去年|明年|本届|" + YEAR_TEXT + "年?)\\s*)?(" + MarathonUpdates.EVENT_NAME + ")");
+    private static final Pattern UPCOMING_ATHLETE = Pattern.compile("^" + QUERY_PREFIX
+            + "(?:选手|运动员|跑者)?\\s*([\\p{IsHan}·]{2,5}?)\\s*[,，、]?\\s*"
+            + "(今天|明天|后天|下一[场站])"
+            + "(?:会|要|将|准备|打算|计划)?(?:去)?(?:参加|参赛|出战|跑)"
+            + "\\s*(?:哪[一]?[场个站]|哪里|哪儿|什么)(?:的|一场)?"
+            + "(?:马拉松|半程马拉松|半马|全马|比赛|赛事)?[\\s。？！?!]*$");
+
     private static final Pattern INTERVIEW_TOPIC = Pattern.compile("采访|访谈|引述|发布会");
     private static final Pattern COURSE_TOPIC = Pattern.compile("赛道|路线");
     private static final Pattern PODIUM_ROLE = Pattern.compile("冠军|亚军|季军");
@@ -112,6 +128,7 @@ public final class MarathonChat {
     private final MarathonService marathons;
     private final MarathonSub3 subThree;
     private final MarathonEvidenceIndex raceEvidence;
+    private final MarathonUpdates updates;
     private final Clock clock;
 
     public MarathonChat(MarathonService marathons, Clock clock) {
@@ -124,10 +141,16 @@ public final class MarathonChat {
 
     public MarathonChat(MarathonService marathons, Clock clock, MarathonSub3 subThree,
                         MarathonEvidenceIndex raceEvidence) {
+        this(marathons, clock, subThree, raceEvidence, null);
+    }
+
+    MarathonChat(MarathonService marathons, Clock clock, MarathonSub3 subThree,
+                 MarathonEvidenceIndex raceEvidence, MarathonUpdates updates) {
         this.marathons = marathons;
         this.clock = clock;
         this.subThree = subThree;
         this.raceEvidence = raceEvidence;
+        this.updates = updates;
     }
 
     public Optional<Reply> query(String message, AdviceContext context, boolean owner) {
@@ -145,6 +168,10 @@ public final class MarathonChat {
             int rankingYear = requestedYear == null ? current.getYear() : requestedYear;
             boolean leaderboard = matches(SUB_THREE_LIST, text) || matches(SUB_THREE_AREA, text);
             return Optional.of(Reply.facts(subThree.answer(rankingYear, text, leaderboard)));
+        }
+        if (updates != null) {
+            var update = update(text, owner);
+            if (update.isPresent()) return update;
         }
         boolean weather = matches(WEATHER, text);
         boolean advice = matches(ADVICE, text);
@@ -261,6 +288,59 @@ public final class MarathonChat {
         }).collect(java.util.stream.Collectors.joining("\n\n"));
         return Optional.of(new Reply("已核对的公开赛事资料\n\n" + passages, passages,
                 false, AdviceContext.NONE, "", true));
+    }
+
+    private Optional<Reply> update(String text, boolean owner) {
+        var athlete = UPCOMING_ATHLETE.matcher(text.strip());
+        LocalDate today = LocalDate.now(clock.withZone(CHINA));
+        if (athlete.matches()) {
+            String name = athlete.group(1);
+            if (name.matches(".*(?:[我你他她它们谁]|同事|同学|朋友|队友|跑友|家人|孩子|姓名|名字).*")) return Optional.empty();
+            String when = athlete.group(2);
+            LocalDate first = switch (when) {
+                case "明天" -> today.plusDays(1);
+                case "后天" -> today.plusDays(2);
+                default -> today;
+            };
+            LocalDate last = when.startsWith("下一") ? first.plusDays(30) : first;
+            return Optional.of(Reply.facts(updates.answer(new MarathonUpdates.Query(MarathonUpdates.Kind.ATHLETE,
+                    name, first.getYear(), first, last, null, List.of(), List.of()), owner)));
+        }
+
+        if (matches(WEATHER, text) || matches(ADVICE, text)) return Optional.empty();
+        MarathonUpdates.Kind kind;
+        if (matches(ELITE_LINEUP, text)) {
+            if (matches(PODIUM_QUESTION, text) || text.contains("成绩") || text.contains("获奖")) return Optional.empty();
+            kind = MarathonUpdates.Kind.LINEUP;
+        } else if (matches(REGISTRATION_DATA, text)) {
+            kind = MarathonUpdates.Kind.REGISTRATION;
+        } else {
+            return Optional.empty();
+        }
+
+        var races = mentionedRaces(text);
+        if (races.size() > 1) {
+            return Optional.of(Reply.facts("请指定一个赛事。候选赛事有：" + String.join("、", races) + "。"));
+        }
+        var namedEvent = NAMED_EVENT.matcher(text.strip());
+        String race = races.isEmpty() ? (namedEvent.find() ? namedEvent.group(1) : null) : races.getFirst();
+        if (race == null || races.isEmpty()
+                && race.matches(".*(?:[我你他她它]|这些|哪些|热门|那场|这场|那届|所有|几场|国内|全国|同事|朋友|姓名|查|想了解).*")) {
+            return Optional.of(Reply.facts("请提供要查的马拉松赛事名称和届次。"));
+        }
+        var series = races.isEmpty() ? null : marathons.series().stream()
+                .filter(candidate -> candidate.name().equals(race)).findFirst().orElse(null);
+        Integer edition = year(text, today);
+        String distance = distance(text);
+        if (edition == null && series != null) {
+            edition = marathons.calendar(null, null, distance, 1, race, false, false).events().stream()
+                    .findFirst().map(entry -> entry.event().year()).orElse(today.getYear());
+        }
+        String project = distance == null ? null : Distance.HALF_MARATHON.name().equals(distance) ? "半马" : "全马";
+        var query = new MarathonUpdates.Query(kind, race, edition == null ? today.getYear() : edition,
+                null, null, project, series == null ? List.of() : series.aliases(),
+                series == null ? List.of() : series.officialHosts());
+        return Optional.of(Reply.facts(updates.answer(query, owner)));
     }
 
     private List<String> mentionedRaces(String text) {

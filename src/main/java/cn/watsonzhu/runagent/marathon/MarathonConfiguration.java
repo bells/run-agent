@@ -51,11 +51,12 @@ class MarathonConfiguration {
     MarathonUpdates marathonUpdates(ChatModel model, ObservationRegistry observations,
             @Value("${run-agent.marathon.tavily-api-key:}") String apiKey,
             @Value("${run-agent.marathon.updates-visitor-daily-limit:12}") int visitorLimit,
-            @Value("${run-agent.marathon.updates-owner-daily-limit:24}") int ownerLimit) {
+            @Value("${run-agent.marathon.updates-owner-daily-limit:24}") int ownerLimit,
+            @Value("${run-agent.marathon.updates-disable-thinking:false}") boolean disableThinking) {
         if (apiKey.isBlank()) {
             LoggerFactory.getLogger(MarathonConfiguration.class).warn("marathon_updates status=MISSING_SEARCH_KEY");
         }
-        var client = new MarathonUpdatesClient(apiKey, model, observations);
+        var client = new MarathonUpdatesClient(apiKey, model, observations, disableThinking);
         return new MarathonUpdates(Clock.systemUTC(), visitorLimit, ownerLimit, client::lookup);
     }
 

@@ -1,22 +1,31 @@
 package cn.watsonzhu.runagent.marathon;
 
+import java.net.InetSocketAddress;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
+import com.sun.net.httpserver.HttpServer;
 import io.micrometer.observation.ObservationRegistry;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
+import org.springframework.ai.openai.OpenAiChatModel;
+import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.web.reactive.function.client.ClientResponse;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 import static cn.watsonzhu.runagent.marathon.MarathonUpdates.*;
 import static org.assertj.core.api.Assertions.*;
@@ -50,7 +59,7 @@ class MarathonUpdatesClientTest {
                     """))));
         };
 
-        var lookup = new MarathonUpdatesClient("test-key", model, ObservationRegistry.NOOP, http).lookup(QUERY);
+        var lookup = new MarathonUpdatesClient("test-key", model, ObservationRegistry.NOOP, http, false).lookup(QUERY);
 
         assertThat(requests).hasValue(1);
         assertThat(lookup.sources()).singleElement().satisfies(source -> {
@@ -61,11 +70,59 @@ class MarathonUpdatesClientTest {
     }
 
     @Test
+    void sendsNonThinkingModeOnlyForConfiguredExtractionRequests() throws Exception {
+        WebClient http = WebClient.builder().exchangeFunction(request ->
+                Mono.just(ClientResponse.create(HttpStatus.OK)
+                        .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                        .body("""
+                                {"results":[{"title":"2026上海马拉松","url":"https://race.example.org/brief",
+                                "content":"全马参赛规模为30,000人"}]}
+                                """).build())).build();
+        var captured = new AtomicReference<JsonNode>();
+        var mapper = new JsonMapper();
+        var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            captured.set(mapper.readTree(exchange.getRequestBody().readAllBytes()));
+            String finding = mapper.writeValueAsString("""
+                    {"findings":[{"source":0,"fact":"CAPACITY","value":"30,000","quote":"全马参赛规模为30,000人"}]}
+                    """);
+            byte[] response = """
+                    {"id":"test","object":"chat.completion","created":0,"model":"test",
+                    "choices":[{"index":0,"message":{"role":"assistant","content":%s},"finish_reason":"stop"}]}
+                    """.formatted(finding).getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", MediaType.APPLICATION_JSON_VALUE);
+            exchange.sendResponseHeaders(200, response.length);
+            try (var output = exchange.getResponseBody()) {
+                output.write(response);
+            }
+        });
+        server.start();
+        try {
+            var originalOptions = Map.<String, Object>of("thinking", Map.of("type", "enabled"), "synthetic_option", "keep");
+            var model = OpenAiChatModel.builder().options(OpenAiChatOptions.builder()
+                    .apiKey("test-key").model("test").maxRetries(0).extraBody(originalOptions)
+                    .baseUrl("http://127.0.0.1:" + server.getAddress().getPort() + "/v1").build()).build();
+
+            for (boolean enabled : List.of(true, false)) {
+                var lookup = new MarathonUpdatesClient("test-key", model, ObservationRegistry.NOOP, http, enabled)
+                        .lookup(QUERY);
+                assertThat(lookup.findings()).singleElement().extracting(Finding::value).isEqualTo("30,000");
+                assertThat(captured.get().path("thinking").path("type").asString())
+                        .isEqualTo(enabled ? "disabled" : "enabled");
+                assertThat(captured.get().path("synthetic_option").asString()).isEqualTo("keep");
+            }
+            assertThat(model.getOptions().getExtraBody()).isEqualTo(originalOptions);
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
     void providerErrorDoesNotBecomeAnEmptySearch() {
         WebClient http = WebClient.builder().exchangeFunction(request ->
                 Mono.just(ClientResponse.create(HttpStatus.TOO_MANY_REQUESTS).build())).build();
         ChatModel unexpected = prompt -> { throw new AssertionError("search failed"); };
-        var client = new MarathonUpdatesClient("test-key", unexpected, ObservationRegistry.NOOP, http);
+        var client = new MarathonUpdatesClient("test-key", unexpected, ObservationRegistry.NOOP, http, false);
         assertThatThrownBy(() -> client.lookup(QUERY)).isInstanceOf(IllegalStateException.class);
     }
     @Test
@@ -74,7 +131,7 @@ class MarathonUpdatesClientTest {
         WebClient http = WebClient.builder().exchangeFunction(request ->
                 Mono.<ClientResponse>never().doOnCancel(() -> cancelled.set(true))).build();
         ChatModel unexpected = prompt -> { throw new AssertionError("search never responded"); };
-        var client = new MarathonUpdatesClient("test-key", unexpected, ObservationRegistry.NOOP, http);
+        var client = new MarathonUpdatesClient("test-key", unexpected, ObservationRegistry.NOOP, http, false);
 
         assertThatThrownBy(() -> client.lookup(QUERY)).isInstanceOf(IllegalStateException.class);
         assertThat(cancelled).isTrue();

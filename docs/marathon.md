@@ -49,6 +49,7 @@ python3 scripts/sync_marathon_events.py --output .run-agent/marathon_events.json
 | `RUN_AGENT_MARATHON_UPDATES_ENABLED` | `false` |
 | `RUN_AGENT_MARATHON_UPDATES_VISITOR_DAILY_LIMIT` | 所有访客共 12 次联网查询 |
 | `RUN_AGENT_MARATHON_UPDATES_OWNER_DAILY_LIMIT` | 站主 24 次联网查询 |
+| `RUN_AGENT_MARATHON_UPDATES_DISABLE_THINKING` | `false`。DeepSeek 网关可显式设为 `true`，仅在赛事动态结构化抽取时关闭推理，保留 JSON 输出预算。 |
 
 额度按北京时间每日重置，与赛后成绩查证额度独立。服务先查内存缓存，查到资料保留 30 分钟，暂未找到的结果保留 5 分钟。缓存命中不占用联网额度，服务重启清空缓存和计数。动态查询使用一次有界搜索和一次结构化提取，搜索词来自赛事或公开跑者姓名、日期和查询类别。
 

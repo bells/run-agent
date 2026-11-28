@@ -57,17 +57,20 @@ final class MarathonUpdatesClient {
     private final String apiKey;
     private final ChatClient extractor;
     private final WebClient http;
+    private final boolean disableThinking;
     private final Semaphore modelPermit = new Semaphore(1);
 
-    MarathonUpdatesClient(String apiKey, ChatModel model, ObservationRegistry observations) {
+    MarathonUpdatesClient(String apiKey, ChatModel model, ObservationRegistry observations, boolean disableThinking) {
         this(apiKey, model, observations, WebClient.builder()
-                .codecs(codecs -> codecs.defaultCodecs().maxInMemorySize(128 * 1024)).build());
+                .codecs(codecs -> codecs.defaultCodecs().maxInMemorySize(128 * 1024)).build(), disableThinking);
     }
 
-    MarathonUpdatesClient(String apiKey, ChatModel model, ObservationRegistry observations, WebClient http) {
+    MarathonUpdatesClient(String apiKey, ChatModel model, ObservationRegistry observations, WebClient http,
+                          boolean disableThinking) {
         this.apiKey = apiKey.strip();
         this.extractor = ChatClient.builder(model, observations, null, null).build();
         this.http = http;
+        this.disableThinking = disableThinking;
     }
 
     Lookup lookup(Query query) {
@@ -119,9 +122,11 @@ final class MarathonUpdatesClient {
     private Extraction extract(String input) {
         if (!modelPermit.tryAcquire()) throw new IllegalStateException("Marathon updates extractor is busy");
         try {
+            var options = OpenAiChatOptions.builder().maxTokens(2200);
+            if (disableThinking) options.extraBody(Map.of("thinking", Map.of("type", "disabled")));
             var result = extractor.prompt().messages(new SystemMessage(PROMPT), new UserMessage(input))
                     .advisors(advisors -> advisors.param(ChatClientAttributes.TOOL_CALLING_ADVISOR_AUTO_REGISTER.getKey(), false))
-                    .options(OpenAiChatOptions.builder().maxTokens(2200))
+                    .options(options)
                     .call().responseEntity(Extraction.class);
             if (result.response() == null || result.response().getResult() == null
                     || !result.response().getResult().getOutput().getToolCalls().isEmpty()) return null;

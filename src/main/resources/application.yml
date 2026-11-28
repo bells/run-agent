@@ -79,6 +79,7 @@ run-agent:
     updates-enabled: ${RUN_AGENT_MARATHON_UPDATES_ENABLED:false}
     updates-visitor-daily-limit: ${RUN_AGENT_MARATHON_UPDATES_VISITOR_DAILY_LIMIT:12}
     updates-owner-daily-limit: ${RUN_AGENT_MARATHON_UPDATES_OWNER_DAILY_LIMIT:24}
+    updates-disable-thinking: ${RUN_AGENT_MARATHON_UPDATES_DISABLE_THINKING:false}
   run-review:
     enabled: ${RUN_AGENT_RUN_REVIEW_ENABLED:false}
     generation-enabled: ${RUN_AGENT_RUN_REVIEW_GENERATION_ENABLED:false}
@@ -124,6 +125,9 @@ run-agent:
     top-k: ${RAG_TOP_K:5}
     similarity-threshold: ${RAG_SIMILARITY_THRESHOLD:0.5}
     timeout: ${RAG_TIMEOUT:180s}
+    chunk-mode: ${RAG_CHUNK_MODE:FLAT}
+    rerank-enabled: ${RAG_RERANK_ENABLED:false}
+    citations-enabled: ${RAG_CITATIONS_ENABLED:false}
   agent:
     timeout: ${AGENT_TIMEOUT:30s}
   workflow:

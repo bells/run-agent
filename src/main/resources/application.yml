@@ -125,9 +125,6 @@ run-agent:
     top-k: ${RAG_TOP_K:5}
     similarity-threshold: ${RAG_SIMILARITY_THRESHOLD:0.5}
     timeout: ${RAG_TIMEOUT:180s}
-    chunk-mode: ${RAG_CHUNK_MODE:FLAT}
-    rerank-enabled: ${RAG_RERANK_ENABLED:false}
-    citations-enabled: ${RAG_CITATIONS_ENABLED:false}
   agent:
     timeout: ${AGENT_TIMEOUT:30s}
   workflow:

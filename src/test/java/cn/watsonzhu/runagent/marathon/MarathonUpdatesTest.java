@@ -121,6 +121,21 @@ class MarathonUpdatesTest {
     }
 
     @Test
+    void citesTheNewCapacityInAnExplicitComparisonAndMatchesCountsExpressedInTenThousands() {
+        String increase = "竞赛规模由往届的23000人 提升至30000人";
+        String registration = "赛事报名人数达到38.19万人，创下新高";
+        var official = source("race.example.org", "2026上马报名即将开启！规模提升至30000人", increase);
+        var media = source("media.example.org", "2026上马报名人数创新高 全程马拉松规模扩至三万人", registration);
+        var lookup = new Lookup(List.of(official, media), List.of(
+                new Finding(0, Fact.CAPACITY, "30000", null, null, increase),
+                new Finding(0, Fact.CAPACITY, "23000", null, null, increase),
+                new Finding(1, Fact.REGISTERED, "381900", null, null, registration)));
+        assertThat(updates(lookup).answer(REGISTRATION, false))
+                .contains("参赛名额或规模** · 30000", "报名人数** · 381900")
+                .doesNotContain("23000");
+    }
+
+    @Test
     void doesNotCombineAnotherRunnerAndRaceFromSeparateClauses() {
         String text = "张水华将参加泉州半程马拉松。11月29日李华将参加仙游半程马拉松。";
         var source = source("sports.example.org", "2026年跑步报道", text);

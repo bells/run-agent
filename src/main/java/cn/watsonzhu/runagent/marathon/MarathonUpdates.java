@@ -1,5 +1,6 @@
 package cn.watsonzhu.runagent.marathon;
 
+import java.math.BigDecimal;
 import java.net.URI;
 import java.text.Normalizer;
 import java.time.Clock;
@@ -34,12 +35,18 @@ final class MarathonUpdates {
     private static final Pattern GENERIC_PROJECT = Pattern.compile("(?<![\\p{IsHan}·])(?:全程|半程|竞速轮椅)马拉松");
     private static final Pattern PLAN_SENTENCE = Pattern.compile("[。；;！？!?]");
     private static final Pattern NAME = Pattern.compile("[\\p{L}][\\p{L}.'’· -]{1,79}");
-    private static final String COUNT = "(?:(?:超(?:过)?|约|近|逾|more than|over|about|around|nearly)\\s*)?"
-            + "(?:[0-9]{1,3}(?:,[0-9]{3}){1,2}|[0-9]{1,9})(?:\\.[0-9]{1,4})?\\s*万?";
-    private static final Pattern VALID_COUNT = Pattern.compile(COUNT, Pattern.CASE_INSENSITIVE);
+    private static final String COUNT_QUALIFIER = "超(?:过)?|约|近|逾|more than|over|about|around|nearly";
+    private static final String COUNT_NUMERAL = "(?:[0-9]{1,3}(?:,[0-9]{3}){1,2}|[0-9]{1,9})(?:\\.[0-9]{1,4})?";
+    private static final String COUNT = "(?:(?:" + COUNT_QUALIFIER + ")\\s*)?" + COUNT_NUMERAL + "\\s*万?";
+    private static final Pattern COUNT_PARTS = Pattern.compile(
+            "(?:(" + COUNT_QUALIFIER + ")\\s*)?(" + COUNT_NUMERAL + ")\\s*(万)?", Pattern.CASE_INSENSITIVE);
     private static final Pattern PUBLISHED_COUNT = Pattern.compile("(?<![0-9.,])(" + COUNT + ")"
             + "\\s*(?:[人名个]|runners?\\b|applicants?\\b|entries\\b|participants?\\b|places?\\b|registrations?\\b)",
             Pattern.CASE_INSENSITIVE);
+    private static final Pattern CAPACITY_CHANGE = Pattern.compile(
+            "((?:赛事|参赛|竞赛|项目)?规模|名额)\\s*(?:也\\s*)?(?:由|从)\\s*"
+                    + "(?:(?:往届|上届|去年|[12][0-9]{3}年)的?\\s*)?" + COUNT_NUMERAL + "\\s*万?\\s*[人名个]\\s*"
+                    + "(?:提升|扩大|扩容|增加|提高|调整|减少|缩减|扩|增|降)(?:至|到|为)\\s*");
     private static final Pattern FORECAST = Pattern.compile("预计|预期|预计将|有望|计划|将有|expected|will|forecast",
             Pattern.CASE_INSENSITIVE);
     private static final Pattern NO_PARTICIPATION = Pattern.compile(
@@ -148,12 +155,14 @@ final class MarathonUpdates {
 
     private static boolean supports(Query query, Source source, Finding finding, String quote) {
         if (query.kind() == Kind.ATHLETE) return supportsPlan(query, source, finding, quote);
-        if (!sameEdition(source.title(), quote, query.year())) return false;
-        String project = project(quote);
+        String statement = finding.fact() == Fact.CAPACITY
+                ? CAPACITY_CHANGE.matcher(quote).replaceAll("$1为") : quote;
+        if (!sameEdition(source.title(), statement, query.year())) return false;
+        String project = project(statement);
         if (query.project() != null && !query.project().equals(project)) return false;
         String value = normalize(finding.value());
-        return METRIC_CLAUSE.splitAsStream(quote)
-                .filter(clause -> bindsRace(query, source.title(), quote, clause))
+        return METRIC_CLAUSE.splitAsStream(statement)
+                .filter(clause -> bindsRace(query, source.title(), statement, clause))
                 .anyMatch(clause -> query.kind() == Kind.REGISTRATION
                         ? supportsCount(finding.fact(), value, clause)
                         : NAME.matcher(value).matches() && clause.contains(value) && !NO_PARTICIPATION.matcher(clause).find()
@@ -161,7 +170,7 @@ final class MarathonUpdates {
     }
 
     private static boolean supportsCount(Fact fact, String value, String clause) {
-        if (!VALID_COUNT.matcher(value).matches() || !fact.marker.matcher(clause).find()) return false;
+        if (!COUNT_PARTS.matcher(value).matches() || !fact.marker.matcher(clause).find()) return false;
         if (fact == Fact.STARTERS && FORECAST.matcher(clause).find()) return false;
         if ((fact == Fact.APPLICATIONS || fact == Fact.REGISTERED) && Fact.CAPACITY.marker.matcher(clause).find()) {
             return false;
@@ -171,7 +180,12 @@ final class MarathonUpdates {
     }
 
     private static String comparableCount(String value) {
-        return value.toLowerCase(Locale.ROOT).replace(",", "").replace(" ", "");
+        var parts = COUNT_PARTS.matcher(value);
+        if (!parts.matches()) return value;
+        var number = new BigDecimal(parts.group(2).replace(",", ""));
+        if (parts.group(3) != null) number = number.movePointRight(4);
+        String qualifier = parts.group(1) == null ? "" : parts.group(1).toLowerCase(Locale.ROOT);
+        return qualifier + ":" + number.stripTrailingZeros().toPlainString();
     }
 
     private static boolean supportsPlan(Query query, Source source, Finding finding, String quote) {
@@ -299,7 +313,7 @@ final class MarathonUpdates {
     enum Fact {
         APPLICATIONS(Kind.REGISTRATION, "预报名人数", "预报名|报名申请|参与抽签|pre-registration|lottery applicants"),
         REGISTERED(Kind.REGISTRATION, "报名人数", "(?<!预)报名人数|报名者|正式报名|完成报名|registrations? received|registered runners"),
-        CAPACITY(Kind.REGISTRATION, "参赛名额或规模", "名额|参赛规模|赛事规模|竞赛规模|扩容|规模为|规模达|限额|人数上限|capacity|places available"),
+        CAPACITY(Kind.REGISTRATION, "参赛名额或规模", "名额|参赛规模|赛事规模|竞赛规模|扩容|规模(?:为|达|扩至|提升至|扩大至)|限额|人数上限|capacity|places available"),
         STARTERS(Kind.REGISTRATION, "实际参赛人数", "实际参赛|实到|实际起跑|实际出发|actual starters|runners (?:took|crossed) the start"),
         CONFIRMED(Kind.LINEUP, "官方确认", "确认参赛|确认出战|确定参赛|报名参赛|正式公布|首发名单|参赛名单"),
         INVITED(Kind.LINEUP, "受邀", "邀请|受邀|特邀"),
